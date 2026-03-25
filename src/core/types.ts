@@ -185,3 +185,29 @@ export type RecoveryPlan = {
     mode: string;
   } | null;
 };
+
+export type SupervisorAction = {
+  id: string;
+  kind: string;
+  title: string;
+  worker: WorkerLabel | null;
+  requiresExternalExecution: boolean;
+  documentPath: string | null;
+  documentKind: string | null;
+  summary: string;
+};
+
+export type SupervisorDecision = {
+  schemaVersion: number;
+  kind: 'supervisor.decision';
+  generatedAt: string;
+  runId: string;
+  snapshotPath: string | null;
+  eventLogPath: string | null;
+  overallStatus: string;
+  runStatus: string;
+  activeMilestoneId: string | null;
+  decision: string;
+  reason: string;
+  actions: SupervisorAction[];
+};

@@ -140,9 +140,16 @@ export function createSessionHistoryAdapter(
 
 export function createCronAdapter(
   snapshot: RunSnapshot,
-  options: { worker?: Extract<WorkerRole, 'watchdog' | 'planner' | 'recovery'>; schedule?: string; prompt?: string; jobLabel?: string } = {},
+  options: {
+    worker?: Extract<WorkerRole, 'watchdog' | 'planner' | 'recovery'>;
+    schedule?: string;
+    prompt?: string;
+    jobLabel?: string;
+    mode?: 'ensure' | 'disable';
+  } = {},
 ) {
   const worker = resolveWorker(snapshot, options.worker ?? 'watchdog');
+  const mode = options.mode ?? 'ensure';
   const schedule = options.schedule ?? '*/5 * * * *';
   const prompt = options.prompt
     ?? `Inspect ${snapshot.workers.implementer} for milestone progress or stalls in ${path.basename(snapshot.repoPath)}.`;
@@ -153,6 +160,7 @@ export function createCronAdapter(
     worker,
     payload: {
       adapter: 'cron',
+      mode,
       jobLabel: options.jobLabel ?? `${snapshot.runId}-${worker.label}`,
       schedule,
       targetWorker: worker.label,

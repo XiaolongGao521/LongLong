@@ -1,0 +1,239 @@
+import path from 'node:path';
+
+import { createImplementerContract, selectNextActionableMilestone, writeContractDocument } from './contracts.js';
+import { evaluateRunHealth } from './health.js';
+import { createCronAdapter, createSessionSpawnAdapter, writeOpenClawAdapter } from './openclaw.js';
+import { createRecoveryPlan, writeRecoveryPlan } from './recovery.js';
+import { createVerificationCommand, writeVerificationDocument } from './verification.js';
+
+import type { RunSnapshot, SupervisorAction, SupervisorDecision } from './types.js';
+
+function sanitizeSegment(value: string | null | undefined, fallback: string): string {
+  return (value ?? fallback).replace(/[^a-z0-9._-]+/giu, '-').replace(/^-+|-+$/gu, '') || fallback;
+}
+
+function bundleBaseName(snapshot: RunSnapshot): string {
+  return sanitizeSegment(snapshot.currentMilestoneId ?? snapshot.runId, 'run');
+}
+
+export function createSupervisorDecision(
+  snapshot: RunSnapshot,
+  options: { now?: string; stallThresholdMinutes?: number; verificationCommand?: string } = {},
+): SupervisorDecision {
+  const healthReport = evaluateRunHealth(snapshot, {
+    now: options.now,
+    stallThresholdMinutes: options.stallThresholdMinutes,
+  });
+  const activeMilestone = selectNextActionableMilestone(snapshot);
+  const actions: SupervisorAction[] = [];
+
+  if (snapshot.status === 'completed') {
+    actions.push({
+      id: 'disable-watchdog',
+      kind: 'openclaw.cron',
+      title: 'Disable the watchdog cron for the completed run',
+      worker: snapshot.workers.watchdog,
+      requiresExternalExecution: true,
+      documentPath: null,
+      documentKind: 'openclaw.cron',
+      summary: 'The run is complete; disable the watchdog cadence and stop supervisory nudges.',
+    });
+
+    return {
+      schemaVersion: 1,
+      kind: 'supervisor.decision',
+      generatedAt: new Date().toISOString(),
+      runId: snapshot.runId,
+      snapshotPath: snapshot.snapshotPath ?? null,
+      eventLogPath: snapshot.eventLogPath ?? null,
+      overallStatus: healthReport.overallStatus,
+      runStatus: snapshot.status,
+      activeMilestoneId: null,
+      decision: 'closeout',
+      reason: 'All milestones are completed; only run closeout remains.',
+      actions,
+    };
+  }
+
+  if (snapshot.status === 'blocked' || (snapshot.status !== 'planned' && healthReport.recoveryRecommendation.action !== 'none')) {
+    actions.push({
+      id: 'bounded-recovery',
+      kind: 'recovery.plan',
+      title: 'Hand off bounded recovery work',
+      worker: snapshot.workers.recovery,
+      requiresExternalExecution: true,
+      documentPath: null,
+      documentKind: 'recovery.plan',
+      summary: healthReport.recoveryRecommendation.reason,
+    });
+
+    return {
+      schemaVersion: 1,
+      kind: 'supervisor.decision',
+      generatedAt: new Date().toISOString(),
+      runId: snapshot.runId,
+      snapshotPath: snapshot.snapshotPath ?? null,
+      eventLogPath: snapshot.eventLogPath ?? null,
+      overallStatus: healthReport.overallStatus,
+      runStatus: snapshot.status,
+      activeMilestoneId: activeMilestone?.id ?? null,
+      decision: 'recover',
+      reason: healthReport.recoveryRecommendation.reason,
+      actions,
+    };
+  }
+
+  if (snapshot.status === 'verifying') {
+    actions.push({
+      id: 'run-verification',
+      kind: 'verification.command',
+      title: 'Run milestone verification',
+      worker: snapshot.workers.verifier,
+      requiresExternalExecution: true,
+      documentPath: null,
+      documentKind: 'verification.command',
+      summary: `Run verification for milestone ${activeMilestone?.id ?? 'unknown'} before completion.`,
+    });
+
+    return {
+      schemaVersion: 1,
+      kind: 'supervisor.decision',
+      generatedAt: new Date().toISOString(),
+      runId: snapshot.runId,
+      snapshotPath: snapshot.snapshotPath ?? null,
+      eventLogPath: snapshot.eventLogPath ?? null,
+      overallStatus: healthReport.overallStatus,
+      runStatus: snapshot.status,
+      activeMilestoneId: activeMilestone?.id ?? null,
+      decision: 'verify',
+      reason: 'The active milestone is in verifying state and needs an explicit verification result.',
+      actions,
+    };
+  }
+
+  actions.push({
+    id: 'continue-implementer',
+    kind: 'implementer.contract',
+    title: snapshot.status === 'planned' ? 'Start the next milestone' : 'Continue the active milestone',
+    worker: snapshot.workers.implementer,
+    requiresExternalExecution: true,
+    documentPath: null,
+    documentKind: 'implementer.contract',
+    summary: snapshot.status === 'planned'
+      ? `Start milestone ${activeMilestone?.id ?? 'unknown'} with a bounded implementer contract.`
+      : `Continue milestone ${activeMilestone?.id ?? 'unknown'} without widening scope.`,
+  });
+
+  return {
+    schemaVersion: 1,
+    kind: 'supervisor.decision',
+    generatedAt: new Date().toISOString(),
+    runId: snapshot.runId,
+    snapshotPath: snapshot.snapshotPath ?? null,
+    eventLogPath: snapshot.eventLogPath ?? null,
+    overallStatus: healthReport.overallStatus,
+    runStatus: snapshot.status,
+    activeMilestoneId: activeMilestone?.id ?? null,
+    decision: 'continue',
+    reason: snapshot.status === 'planned'
+      ? 'The run has an actionable milestone and no active implementer progress yet.'
+      : 'The active milestone remains healthy and should continue under the bounded contract.',
+    actions,
+  };
+}
+
+export function writeSupervisorBundle(
+  outputDir: string,
+  snapshot: RunSnapshot,
+  options: { now?: string; stallThresholdMinutes?: number; verificationCommand?: string } = {},
+) {
+  const resolvedOutputDir = path.resolve(outputDir);
+  const decision = createSupervisorDecision(snapshot, options);
+  const baseName = bundleBaseName(snapshot);
+  const documents: Record<string, string> = {};
+
+  if (decision.decision === 'continue') {
+    const contract = createImplementerContract(snapshot);
+    const contractPath = writeContractDocument(path.join(resolvedOutputDir, `${baseName}.implementer-contract.json`), contract);
+    const spawnPath = writeOpenClawAdapter(
+      path.join(resolvedOutputDir, `${baseName}.implementer-spawn.json`),
+      createSessionSpawnAdapter(snapshot, { worker: 'implementer' }),
+    );
+    documents.implementerContract = contractPath;
+    documents.implementerSpawn = spawnPath;
+    decision.actions = decision.actions.map((action) => ({
+      ...action,
+      documentPath: action.kind === 'implementer.contract' ? contractPath : action.documentPath,
+    }));
+  }
+
+  if (decision.decision === 'recover') {
+    const recoveryPlan = createRecoveryPlan(snapshot, evaluateRunHealth(snapshot, {
+      now: options.now,
+      stallThresholdMinutes: options.stallThresholdMinutes,
+    }));
+    const recoveryPlanPath = writeRecoveryPlan(path.join(resolvedOutputDir, `${baseName}.recovery-plan.json`), recoveryPlan);
+    const recoverySpawnPath = writeOpenClawAdapter(
+      path.join(resolvedOutputDir, `${baseName}.recovery-spawn.json`),
+      createSessionSpawnAdapter(snapshot, {
+        worker: 'recovery',
+        healthOptions: { stallThresholdMinutes: options.stallThresholdMinutes },
+      }),
+    );
+    documents.recoveryPlan = recoveryPlanPath;
+    documents.recoverySpawn = recoverySpawnPath;
+    decision.actions = decision.actions.map((action) => ({
+      ...action,
+      documentPath: action.kind === 'recovery.plan' ? recoveryPlanPath : action.documentPath,
+    }));
+  }
+
+  if (decision.decision === 'verify') {
+    const verificationCommand = createVerificationCommand(snapshot, {
+      command: options.verificationCommand,
+    });
+    const verificationCommandPath = writeVerificationDocument(
+      path.join(resolvedOutputDir, `${baseName}.verification-command.json`),
+      verificationCommand,
+    );
+    documents.verificationCommand = verificationCommandPath;
+    decision.actions = decision.actions.map((action) => ({
+      ...action,
+      documentPath: action.kind === 'verification.command' ? verificationCommandPath : action.documentPath,
+    }));
+  }
+
+  if (decision.decision === 'closeout') {
+    const disableWatchdogPath = writeOpenClawAdapter(
+      path.join(resolvedOutputDir, `${sanitizeSegment(snapshot.runId, 'run')}.watchdog-disable.json`),
+      createCronAdapter(snapshot, { worker: 'watchdog', mode: 'disable' }),
+    );
+    documents.disableWatchdog = disableWatchdogPath;
+    decision.actions = decision.actions.map((action) => ({
+      ...action,
+      documentPath: action.kind === 'openclaw.cron' ? disableWatchdogPath : action.documentPath,
+    }));
+  }
+
+  const decisionPath = path.join(resolvedOutputDir, 'supervisor-decision.json');
+  const manifestPath = path.join(resolvedOutputDir, 'supervisor-manifest.json');
+  writeContractDocument(decisionPath, decision as never);
+  writeContractDocument(manifestPath, {
+    schemaVersion: 1,
+    kind: 'supervisor.bundle',
+    generatedAt: new Date().toISOString(),
+    runId: snapshot.runId,
+    snapshotPath: snapshot.snapshotPath ?? null,
+    eventLogPath: snapshot.eventLogPath ?? null,
+    outputDir: resolvedOutputDir,
+    decision: decisionPath,
+    documents,
+  } as never);
+
+  return {
+    decision,
+    decisionPath,
+    manifestPath,
+    documents,
+  };
+}

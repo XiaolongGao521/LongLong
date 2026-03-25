@@ -1,4 +1,4 @@
-Goal: replace the remaining manual supervisor/orchestrator glue with a thin Laizy-native wrapper that boots a deterministic run from the compiled CLI.
+Goal: replace the remaining manual supervisor/orchestrator glue with thin Laizy-native CLI wrappers that deterministically read durable run state and emit the next machine-readable action documents.
 
 ## Execution rules
 - This plan is the authoritative execution queue for the supervisor-wrapper slice.
@@ -7,18 +7,17 @@ Goal: replace the remaining manual supervisor/orchestrator glue with a thin Laiz
 - Keep scope narrow and compatibility-safe; prefer wrappers around existing primitives over new orchestration subsystems.
 - The compiled CLI entrypoint is `dist/src/index.js`; operator docs should teach that path, not source files.
 
-### [x] W1 - Add a top-level run bootstrap wrapper
-- Added a `start-run` CLI command that composes run initialization, planner intent emission, implementer contract emission, and initial OpenClaw bootstrap adapter emission in one deterministic step.
-- The wrapper writes a bootstrap bundle alongside the snapshot, including the snapshot/event log plus planner/implementer/watchdog bootstrap documents for the active run.
-- Added a machine-readable `run.bootstrap` manifest so an external supervisor can consume one stable document instead of manually chaining several Laizy subcommands.
-- Kept the implementation thin by reusing existing run-state, contract, and OpenClaw adapter primitives rather than introducing a new orchestration layer.
+### [x] W3 - Add a deterministic supervisor tick wrapper
+- Added a top-level `supervisor-tick` CLI command that rebuilds durable run state from the snapshot, evaluates health, and emits one machine-readable supervisor decision bundle.
+- The bundle classifies the next deterministic action as continue, verify, recover, or closeout, then writes the corresponding bounded documents and OpenClaw adapters alongside a stable manifest.
+- Reused existing implementer, recovery, verification, and OpenClaw primitives instead of introducing a new orchestration subsystem; the wrapper is packaging and decision glue over the current compiled CLI flow.
+- Added explicit closeout guidance with a machine-readable watchdog disable cron adapter so operators no longer need to compose shutdown guidance by hand.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Discovery: the repo verification script should not encode an old plan-shape assumption like “at least four milestones,” because a narrower authoritative plan is still valid and should stay buildable.
-- Discovery: validating the wrapper by invoking the compiled CLI from build-check catches wiring drift that pure module-level assertions would miss.
+- Discovery: the health model treats a freshly planned run as `rehand-off`, so the supervisor layer must special-case planned bootstrap continuation instead of blindly mapping every non-`none` recommendation to recovery.
+- Discovery: covering the wrapper in `build-check` needs state-specific assertions for continue, recover, verify, and closeout so decision drift is caught before operators see inconsistent next-action bundles.
 
-### [x] W2 - Refresh README for the wrapper-driven CLI flow
-- Updated `README.md` so the primary operator path is the compiled CLI under `dist/src/index.js`.
-- Documented the new `start-run` bootstrap command, the artifacts it writes, and how it removes the manual first-run glue of chaining several subcommands by hand.
-- Kept `init-run` and the lower-level subcommands documented as building blocks, while making the wrapper flow the practical getting-started path.
+### [ ] W4 - Refresh README for supervisor-driven continuation and closeout
+- Update `README.md` so the recommended operator flow shows `start-run` for bootstrap and `supervisor-tick` for deterministic continuation, recovery handoff, and closeout.
+- Document the supervisor tick bundle/artifacts and how they replace the remaining manual chat reasoning around next action selection.
+- Keep the lower-level commands documented as building blocks for adapters and tests, while making the wrapper flow the primary path.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Discovery: once a wrapper exists, the README should present it first or operators will keep cargo-culting the older manual composition flow even though the compiled CLI already knows how to emit the needed bundle.

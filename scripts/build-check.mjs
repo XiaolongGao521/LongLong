@@ -38,6 +38,7 @@ run(process.execPath, ['--check', 'dist/src/core/health.js']);
 run(process.execPath, ['--check', 'dist/src/core/recovery.js']);
 run(process.execPath, ['--check', 'dist/src/core/openclaw.js']);
 run(process.execPath, ['--check', 'dist/src/core/verification.js']);
+run(process.execPath, ['--check', 'dist/src/core/supervisor.js']);
 
 const [
   contractsModule,
@@ -48,6 +49,7 @@ const [
   openClawModule,
   runStateModule,
   verificationModule,
+  supervisorModule,
 ] = await Promise.all([
   importBuiltModule('dist/src/core/contracts.js'),
   importBuiltModule('dist/src/core/events.js'),
@@ -57,6 +59,7 @@ const [
   importBuiltModule('dist/src/core/openclaw.js'),
   importBuiltModule('dist/src/core/run-state.js'),
   importBuiltModule('dist/src/core/verification.js'),
+  importBuiltModule('dist/src/core/supervisor.js'),
 ]);
 
 const {
@@ -90,6 +93,7 @@ const {
   createVerificationCommand,
   writeVerificationDocument,
 } = verificationModule;
+const { createSupervisorDecision, writeSupervisorBundle } = supervisorModule;
 
 const plan = loadImplementationPlan('IMPLEMENTATION_PLAN.md');
 const summary = summarizePlan(plan.milestones);
@@ -191,6 +195,28 @@ assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifes
 const bootstrapSpawnAdapter = JSON.parse(readFileSync(bootstrapManifest.documents.implementerSpawn, 'utf8'));
 assert(bootstrapSpawnAdapter.kind === 'openclaw.sessions_spawn', 'expected bootstrap bundle to include a machine-readable spawn adapter');
 
+const supervisorCliResult = run(process.execPath, [
+  'dist/src/index.js',
+  'supervisor-tick',
+  '--snapshot',
+  cliBootstrapSnapshotPath,
+  '--verification-command',
+  '/usr/bin/node scripts/build-check.mjs',
+]);
+const supervisorCliOutput = JSON.parse(supervisorCliResult.stdout);
+assert(supervisorCliOutput.decision === 'continue', 'expected supervisor-tick CLI to continue a fresh run');
+const supervisorCliManifest = JSON.parse(readFileSync(supervisorCliOutput.manifestPath, 'utf8'));
+assert(supervisorCliManifest.kind === 'supervisor.bundle', 'expected supervisor-tick CLI to emit a supervisor bundle manifest');
+
+const continueDecision = createSupervisorDecision(initialized.snapshot);
+assert(continueDecision.kind === 'supervisor.decision', 'expected supervisor decision document kind');
+assert(continueDecision.decision === 'continue', 'expected a fresh planned run to continue into implementer work');
+
+const continueBundle = writeSupervisorBundle(path.join(tempDir, 'supervisor', 'continue'), initialized.snapshot);
+assert(continueBundle.documents.implementerContract, 'expected continue bundle to include an implementer contract');
+const persistedContinueDecision = JSON.parse(readFileSync(continueBundle.decisionPath, 'utf8'));
+assert(persistedContinueDecision.decision === 'continue', 'expected persisted continue decision to remain machine-readable');
+
 const verificationCommand = createVerificationCommand(initialized.snapshot, {
   command: '/usr/bin/node scripts/build-check.mjs',
 });
@@ -231,6 +257,17 @@ const recoveryPlan = createRecoveryPlan(started.snapshot, stalledReport);
 assert(recoveryPlan.action === 'restart-implementer', 'expected recovery plan to mirror stalled recommendation');
 assert(recoveryPlan.resumeContract?.milestone?.id === targetMilestoneId, 'expected recovery plan to include bounded resume contract');
 
+const recoveryDecision = createSupervisorDecision(started.snapshot, {
+  now: stalledCheckedAt,
+  stallThresholdMinutes: 15,
+});
+assert(recoveryDecision.decision === 'recover', 'expected stalled supervisor decision to choose bounded recovery');
+const recoveryBundle = writeSupervisorBundle(path.join(tempDir, 'supervisor', 'recovery'), started.snapshot, {
+  now: stalledCheckedAt,
+  stallThresholdMinutes: 15,
+});
+assert(recoveryBundle.documents.recoveryPlan, 'expected recovery bundle to include a recovery plan');
+
 const recoveryPlanPath = writeRecoveryPlan(path.join(tempDir, 'recovery', 'plan.json'), recoveryPlan);
 const persistedRecoveryPlan = JSON.parse(readFileSync(recoveryPlanPath, 'utf8'));
 assert(persistedRecoveryPlan.action === 'restart-implementer', 'expected persisted recovery plan to remain machine-readable');
@@ -263,11 +300,20 @@ const reportPath = writeHealthReport(path.join(tempDir, 'reports', 'health.json'
 const persistedReport = JSON.parse(readFileSync(reportPath, 'utf8'));
 assert(persistedReport.overallStatus === 'healthy', 'expected persisted health report to remain machine-readable');
 
-transitionMilestone(snapshotPath, {
+const verifying = transitionMilestone(snapshotPath, {
   milestoneId: targetMilestoneId,
   status: 'verifying',
   note: 'verification started',
 });
+
+const verifyDecision = createSupervisorDecision(verifying.snapshot, {
+  verificationCommand: '/usr/bin/node scripts/build-check.mjs',
+});
+assert(verifyDecision.decision === 'verify', 'expected verifying supervisor decision to request verification');
+const verifyBundle = writeSupervisorBundle(path.join(tempDir, 'supervisor', 'verify'), verifying.snapshot, {
+  verificationCommand: '/usr/bin/node scripts/build-check.mjs',
+});
+assert(verifyBundle.documents.verificationCommand, 'expected verify bundle to include a verification command');
 
 let completionBlocked = false;
 try {
@@ -304,6 +350,15 @@ const expectedRunStatus = expectedRemainingMilestoneId ? 'planned' : 'completed'
 assert(completed.snapshot.currentMilestoneId === expectedRemainingMilestoneId, 'expected completed milestone to advance current pointer to the next incomplete milestone');
 assert(completed.snapshot.status === expectedRunStatus, 'expected run status to reflect whether incomplete milestones remain');
 assert(completed.snapshot.eventCount === 7, 'expected initialization, recovery, heartbeat, verification, and milestone transitions in event log');
+
+if (completed.snapshot.status === 'completed') {
+  const closeoutDecision = createSupervisorDecision(completed.snapshot);
+  assert(closeoutDecision.decision === 'closeout', 'expected completed supervisor decision to request closeout');
+  const closeoutBundle = writeSupervisorBundle(path.join(tempDir, 'supervisor', 'closeout'), completed.snapshot);
+  assert(closeoutBundle.documents.disableWatchdog, 'expected closeout bundle to include a watchdog disable adapter');
+  const disableWatchdogAdapter = JSON.parse(readFileSync(closeoutBundle.documents.disableWatchdog, 'utf8'));
+  assert(disableWatchdogAdapter.payload.mode === 'disable', 'expected closeout adapter to disable the watchdog cron');
+}
 
 const persisted = JSON.parse(readFileSync(snapshotPath, 'utf8'));
 assert(persisted.currentMilestoneId === expectedRemainingMilestoneId, 'expected persisted snapshot to point at the next incomplete milestone');

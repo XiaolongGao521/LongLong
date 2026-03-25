@@ -44,6 +44,7 @@ import {
   createVerificationCommand,
   writeVerificationDocument,
 } from './core/verification.js';
+import { writeSupervisorBundle } from './core/supervisor.js';
 import type { MilestoneStatus, VerificationStatus, WorkerLabel, WorkerRole } from './core/types.js';
 
 function printHelp() {
@@ -62,6 +63,7 @@ Usage:
   node dist/src/index.js heartbeat --snapshot <snapshot-path> --worker <worker-name> [--note <text>]
   node dist/src/index.js inspect-health --snapshot <snapshot-path> [--stall-threshold-minutes <n>] [--now <iso>] [--out <report-path>]
   node dist/src/index.js plan-recovery --snapshot <snapshot-path> [--stall-threshold-minutes <n>] [--now <iso>] [--out <plan-path>]
+  node dist/src/index.js supervisor-tick --snapshot <snapshot-path> [--out-dir <dir>] [--stall-threshold-minutes <n>] [--verification-command <text>]
   node dist/src/index.js record-recovery-action --snapshot <snapshot-path> --action <action> --reason <text> --worker <worker-name> [--milestone <id>] [--note <text>] [--source <value>]
   node dist/src/index.js emit-openclaw-spawn --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] [--milestone <id>] [--runtime <value>] [--out <path>]
   node dist/src/index.js emit-openclaw-send --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] --message <text> [--mode <append|replace>] [--out <path>]
@@ -390,6 +392,33 @@ function main() {
     }
 
     console.log(JSON.stringify(recoveryPlan, null, 2));
+    return;
+  }
+
+  if (command === 'supervisor-tick') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    const outputDir = typeof options['out-dir'] === 'string'
+      ? options['out-dir']
+      : path.join(path.dirname(rebuilt.snapshotPath), `${path.basename(rebuilt.snapshotPath, '.json')}.supervisor`);
+    const result = writeSupervisorBundle(outputDir, rebuilt.snapshot, {
+      stallThresholdMinutes:
+        typeof options['stall-threshold-minutes'] === 'string'
+          ? Number(options['stall-threshold-minutes'])
+          : undefined,
+      verificationCommand:
+        typeof options['verification-command'] === 'string'
+          ? options['verification-command']
+          : undefined,
+    });
+
+    console.log(JSON.stringify({
+      decision: result.decision.decision,
+      reason: result.decision.reason,
+      decisionPath: result.decisionPath,
+      manifestPath: result.manifestPath,
+      actions: result.decision.actions,
+    }, null, 2));
     return;
   }
 
