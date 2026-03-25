@@ -50,7 +50,9 @@ The compiled CLI entrypoint is:
 node dist/src/index.js
 ```
 
-### Recommended: bootstrap a run in one step
+### Recommended operator flow: `start-run` once, then `supervisor-tick` until closeout
+
+Bootstrap a run once:
 
 ```bash
 node dist/src/index.js start-run \
@@ -59,7 +61,26 @@ node dist/src/index.js start-run \
   --out state/runs/demo-run.json
 ```
 
-This is the thinnest Laizy-native wrapper over the existing primitives. Instead of manually chaining `init-run`, contract emission, and OpenClaw adapter emission, `start-run` writes a deterministic bootstrap bundle for the active run.
+Then continue deterministically from durable state with the supervisor wrapper:
+
+```bash
+node dist/src/index.js supervisor-tick \
+  --snapshot state/runs/demo-run.json \
+  --out-dir state/runs/demo-run.supervisor
+```
+
+This is the primary Laizy-native operator path.
+
+- `start-run` handles bootstrap once and writes the initial bundle.
+- `supervisor-tick` is the continuation wrapper for every later decision point.
+- The wrapper reads the durable snapshot and event log, rebuilds the current state, evaluates health, and emits the next bounded machine-readable action bundle.
+- Operators and chat supervisors should consume the emitted bundle instead of re-reasoning in freeform chat about what to do next.
+
+That makes continuation deterministic across normal progress, stalled workers, verification handoff, and final closeout.
+
+### `start-run` bootstrap bundle
+
+Instead of manually chaining `init-run`, contract emission, and OpenClaw adapter emission, `start-run` writes a deterministic bootstrap bundle for the active run.
 
 By default it creates:
 
@@ -81,7 +102,33 @@ Useful options:
 - `--schedule <cron>` — override the watchdog cron cadence
 - `--prompt <text>` — override the emitted watchdog prompt
 
-### Low-level building block: initialize only the run file
+### `supervisor-tick` continuation, recovery handoff, verification, and closeout
+
+```bash
+node dist/src/index.js supervisor-tick \
+  --snapshot state/runs/demo-run.json \
+  --out-dir state/runs/demo-run.supervisor
+```
+
+`supervisor-tick` is the thin deterministic replacement for the remaining manual supervisor glue. It rebuilds state from the snapshot, inspects run health, selects the next action, and writes one bounded decision bundle.
+
+Depending on the current run state, the bundle will classify the next step as one of:
+
+- `continue` — keep implementation moving with a fresh bounded implementer handoff
+- `recover` — hand off to recovery with a machine-readable restart/repair plan
+- `verify` — hand off the current milestone to verification/review
+- `closeout` — declare the run complete and emit the watchdog-disable/shutdown artifacts
+
+Typical emitted artifacts include:
+
+- a stable supervisor manifest describing the decision
+- the decision-specific handoff document (`implementer`, `recovery`, `verification`, or `closeout`)
+- any OpenClaw adapter payloads needed for that next step
+- closeout-specific watchdog disable guidance when the plan is complete
+
+The important contract is that the supervisor bundle becomes the source of truth for the next action. A chat-based watchdog or operator should read the manifest and execute the emitted bounded document, not improvise the next step from memory.
+
+### Low-level building blocks
 
 ```bash
 node dist/src/index.js init-run \

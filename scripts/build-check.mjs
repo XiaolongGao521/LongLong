@@ -98,6 +98,7 @@ const { createSupervisorDecision, writeSupervisorBundle } = supervisorModule;
 const plan = loadImplementationPlan('IMPLEMENTATION_PLAN.md');
 const summary = summarizePlan(plan.milestones);
 const nextMilestoneId = summary.next?.id;
+const planHasIncompleteMilestones = Boolean(nextMilestoneId);
 assert(summary.total >= 1, 'expected IMPLEMENTATION_PLAN.md to contain at least one milestone');
 const targetMilestoneId = nextMilestoneId ?? plan.milestones.at(-1)?.id ?? null;
 assert(targetMilestoneId, 'expected IMPLEMENTATION_PLAN.md to contain at least one milestone');
@@ -188,7 +189,10 @@ const startRunResult = run(process.execPath, [
 ]);
 const startRunOutput = JSON.parse(startRunResult.stdout);
 assert(startRunOutput.runId === 'build-check-bootstrap', 'expected start-run output to preserve explicit run id');
-assert(startRunOutput.currentMilestoneId === targetMilestoneId, 'expected start-run output to preserve the active milestone');
+assert(
+  startRunOutput.currentMilestoneId === (planHasIncompleteMilestones ? targetMilestoneId : null),
+  'expected start-run output to preserve the active milestone when work remains and report null after full closeout',
+);
 const bootstrapManifest = JSON.parse(readFileSync(startRunOutput.manifestPath, 'utf8'));
 assert(bootstrapManifest.kind === 'run.bootstrap', 'expected start-run to emit a bootstrap manifest');
 assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path');
@@ -204,9 +208,15 @@ const supervisorCliResult = run(process.execPath, [
   '/usr/bin/node scripts/build-check.mjs',
 ]);
 const supervisorCliOutput = JSON.parse(supervisorCliResult.stdout);
-assert(supervisorCliOutput.decision === 'continue', 'expected supervisor-tick CLI to continue a fresh run');
+assert(
+  supervisorCliOutput.decision === (planHasIncompleteMilestones ? 'continue' : 'closeout'),
+  'expected supervisor-tick CLI to continue active work and switch to closeout once the plan is complete',
+);
 const supervisorCliManifest = JSON.parse(readFileSync(supervisorCliOutput.manifestPath, 'utf8'));
 assert(supervisorCliManifest.kind === 'supervisor.bundle', 'expected supervisor-tick CLI to emit a supervisor bundle manifest');
+if (!planHasIncompleteMilestones) {
+  assert(supervisorCliManifest.documents.disableWatchdog, 'expected closeout supervisor bundle to include a watchdog disable adapter');
+}
 
 const continueDecision = createSupervisorDecision(initialized.snapshot);
 assert(continueDecision.kind === 'supervisor.decision', 'expected supervisor decision document kind');
