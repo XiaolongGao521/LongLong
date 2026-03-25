@@ -94,7 +94,7 @@ const {
 const plan = loadImplementationPlan('IMPLEMENTATION_PLAN.md');
 const summary = summarizePlan(plan.milestones);
 const nextMilestoneId = summary.next?.id;
-assert(summary.total >= 4, 'expected at least four milestones in IMPLEMENTATION_PLAN.md');
+assert(summary.total >= 1, 'expected IMPLEMENTATION_PLAN.md to contain at least one milestone');
 const targetMilestoneId = nextMilestoneId ?? plan.milestones.at(-1)?.id ?? null;
 assert(targetMilestoneId, 'expected IMPLEMENTATION_PLAN.md to contain at least one milestone');
 
@@ -168,6 +168,28 @@ assert(cronAdapter.payload.schedule === '*/5 * * * *', 'expected cron adapter to
 const spawnAdapterPath = writeOpenClawAdapter(path.join(tempDir, 'adapters', 'spawn.json'), spawnAdapter);
 const persistedSpawnAdapter = JSON.parse(readFileSync(spawnAdapterPath, 'utf8'));
 assert(persistedSpawnAdapter.payload.sessionLabel === 'laizy-implementer', 'expected persisted spawn adapter to remain machine-readable');
+
+const cliBootstrapSnapshotPath = path.join(tempDir, 'cli-run.json');
+const startRunResult = run(process.execPath, [
+  'dist/src/index.js',
+  'start-run',
+  '--goal',
+  'Bootstrap a deterministic supervised run',
+  '--plan',
+  'IMPLEMENTATION_PLAN.md',
+  '--out',
+  cliBootstrapSnapshotPath,
+  '--run-id',
+  'build-check-bootstrap',
+]);
+const startRunOutput = JSON.parse(startRunResult.stdout);
+assert(startRunOutput.runId === 'build-check-bootstrap', 'expected start-run output to preserve explicit run id');
+assert(startRunOutput.currentMilestoneId === targetMilestoneId, 'expected start-run output to preserve the active milestone');
+const bootstrapManifest = JSON.parse(readFileSync(startRunOutput.manifestPath, 'utf8'));
+assert(bootstrapManifest.kind === 'run.bootstrap', 'expected start-run to emit a bootstrap manifest');
+assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path');
+const bootstrapSpawnAdapter = JSON.parse(readFileSync(bootstrapManifest.documents.implementerSpawn, 'utf8'));
+assert(bootstrapSpawnAdapter.kind === 'openclaw.sessions_spawn', 'expected bootstrap bundle to include a machine-readable spawn adapter');
 
 const verificationCommand = createVerificationCommand(initialized.snapshot, {
   command: '/usr/bin/node scripts/build-check.mjs',

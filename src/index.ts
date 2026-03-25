@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -53,6 +53,7 @@ Usage:
   node dist/src/index.js next --plan <path>
   node dist/src/index.js summary --plan <path>
   node dist/src/index.js init-run --goal <text> --plan <path> --out <snapshot-path> [--run-id <id>]
+  node dist/src/index.js start-run --goal <text> --plan <path> --out <snapshot-path> [--run-id <id>] [--bundle-dir <dir>] [--runtime <value>] [--schedule <cron>] [--prompt <text>]
   node dist/src/index.js transition --snapshot <snapshot-path> --milestone <id> --status <status> [--note <text>]
   node dist/src/index.js snapshot --snapshot <snapshot-path>
   node dist/src/index.js select-milestone --snapshot <snapshot-path>
@@ -111,6 +112,20 @@ function defaultRunId() {
   return `run-${new Date().toISOString().replace(/[:.]/g, '-').toLowerCase()}`;
 }
 
+function defaultBootstrapDir(snapshotPath: string): string {
+  const resolvedSnapshotPath = path.resolve(snapshotPath);
+  return resolvedSnapshotPath.endsWith('.json')
+    ? resolvedSnapshotPath.replace(/\.json$/u, '.bootstrap')
+    : `${resolvedSnapshotPath}.bootstrap`;
+}
+
+function writeJsonDocument(outputPath: string, document: object): string {
+  const resolvedOutputPath = path.resolve(outputPath);
+  mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
+  writeFileSync(resolvedOutputPath, JSON.stringify(document, null, 2) + '\n', 'utf8');
+  return resolvedOutputPath;
+}
+
 function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
 
@@ -140,7 +155,7 @@ function main() {
     return;
   }
 
-  if (command === 'init-run') {
+  if (command === 'init-run' || command === 'start-run') {
     const planPath = requireOption(options, 'plan');
     const goal = requireOption(options, 'goal');
     const snapshotPath = requireOption(options, 'out');
@@ -156,13 +171,72 @@ function main() {
     });
 
     const initialized = initializeRunArtifacts(snapshotPath, runState);
+
+    if (command === 'init-run') {
+      console.log(
+        JSON.stringify(
+          {
+            runId,
+            snapshotPath: initialized.snapshotPath,
+            eventLogPath: initialized.eventLogPath,
+            currentMilestoneId: initialized.snapshot.currentMilestoneId,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    const rebuilt = rebuildSnapshot(initialized.snapshotPath);
+    const bundleDir = typeof options['bundle-dir'] === 'string'
+      ? path.resolve(options['bundle-dir'])
+      : defaultBootstrapDir(initialized.snapshotPath);
+    const plannerIntent = createPlannerIntent(rebuilt.snapshot);
+    const implementerContract = createImplementerContract(rebuilt.snapshot);
+    const implementerSpawn = createSessionSpawnAdapter(rebuilt.snapshot, {
+      worker: 'implementer',
+      runtime: typeof options.runtime === 'string' ? options.runtime : undefined,
+    });
+    const watchdogCron = createCronAdapter(rebuilt.snapshot, {
+      worker: 'watchdog',
+      schedule: typeof options.schedule === 'string' ? options.schedule : undefined,
+      prompt: typeof options.prompt === 'string' ? options.prompt : undefined,
+    });
+
+    const plannerIntentPath = writeContractDocument(path.join(bundleDir, 'planner-intent.json'), plannerIntent);
+    const implementerContractPath = writeContractDocument(path.join(bundleDir, 'implementer-contract.json'), implementerContract);
+    const implementerSpawnPath = writeOpenClawAdapter(path.join(bundleDir, 'openclaw-implementer-spawn.json'), implementerSpawn);
+    const watchdogCronPath = writeOpenClawAdapter(path.join(bundleDir, 'openclaw-watchdog-cron.json'), watchdogCron);
+    const manifestPath = writeJsonDocument(path.join(bundleDir, 'bootstrap-manifest.json'), {
+      schemaVersion: 1,
+      kind: 'run.bootstrap',
+      generatedAt: new Date().toISOString(),
+      runId,
+      goal,
+      repoPath: rebuilt.snapshot.repoPath,
+      planPath: rebuilt.snapshot.planPath,
+      snapshotPath: rebuilt.snapshotPath,
+      eventLogPath: rebuilt.eventLogPath,
+      currentMilestoneId: rebuilt.snapshot.currentMilestoneId,
+      bundleDir,
+      documents: {
+        plannerIntent: plannerIntentPath,
+        implementerContract: implementerContractPath,
+        implementerSpawn: implementerSpawnPath,
+        watchdogCron: watchdogCronPath,
+      },
+    });
+
     console.log(
       JSON.stringify(
         {
           runId,
-          snapshotPath: initialized.snapshotPath,
-          eventLogPath: initialized.eventLogPath,
-          currentMilestoneId: initialized.snapshot.currentMilestoneId,
+          snapshotPath: rebuilt.snapshotPath,
+          eventLogPath: rebuilt.eventLogPath,
+          bundleDir,
+          manifestPath,
+          currentMilestoneId: rebuilt.snapshot.currentMilestoneId,
         },
         null,
         2,

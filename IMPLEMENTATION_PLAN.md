@@ -1,43 +1,23 @@
-Goal: convert Laizy from JavaScript `.mjs` modules to a TypeScript-first repository without a risky flag-day rewrite.
+Goal: replace the remaining manual supervisor/orchestrator glue with a thin Laizy-native wrapper that boots a deterministic run from the compiled CLI.
 
 ## Execution rules
-- The plan is the authoritative execution queue for TypeScript migration work in this repository.
-- Build mode should advance one highest-priority incomplete milestone at a time.
-- Every completed milestone must be verified, committed once, and pushed.
-- Prefer compatibility-safe slices that keep the repo runnable after each milestone.
-- In this environment, use `/usr/bin/node scripts/build-check.mjs` as the primary verification checkpoint unless a stronger TS-aware path is added and passes here.
+- This plan is the authoritative execution queue for the supervisor-wrapper slice.
+- Advance one highest-priority incomplete milestone at a time.
+- After each completed milestone: update this file, verify with `/usr/bin/node scripts/build-check.mjs`, commit exactly once, and push immediately.
+- Keep scope narrow and compatibility-safe; prefer wrappers around existing primitives over new orchestration subsystems.
+- The compiled CLI entrypoint is `dist/src/index.js`; operator docs should teach that path, not source files.
 
-### [x] T1 - Add TypeScript toolchain and TS-first package wiring
-- Added `typescript` and `@types/node` as development dependencies.
-- Introduced a repo-local `tsconfig.json` configured for Node ESM output with `allowJs` so the migration can proceed incrementally.
-- Updated package scripts to add explicit `compile` and `typecheck` entry points while keeping `/usr/bin/node scripts/build-check.mjs` as the canonical build verification path.
-- Refreshed `scripts/build-check.mjs` to compile into `dist/` and validate the built artifacts instead of only checking source files in place.
+### [x] W1 - Add a top-level run bootstrap wrapper
+- Added a `start-run` CLI command that composes run initialization, planner intent emission, implementer contract emission, and initial OpenClaw bootstrap adapter emission in one deterministic step.
+- The wrapper writes a bootstrap bundle alongside the snapshot, including the snapshot/event log plus planner/implementer/watchdog bootstrap documents for the active run.
+- Added a machine-readable `run.bootstrap` manifest so an external supervisor can consume one stable document instead of manually chaining several Laizy subcommands.
+- Kept the implementation thin by reusing existing run-state, contract, and OpenClaw adapter primitives rather than introducing a new orchestration layer.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Discovery: `allowJs` + `NodeNext` lets the repo adopt a TS-first build pipeline before the source conversion is complete, which keeps each migration slice runnable.
-- Discovery: the verification script should derive stall-check timestamps from the active snapshot rather than hard-coding dates, otherwise time-sensitive health assertions become flaky.
+- Discovery: the repo verification script should not encode an old plan-shape assumption like “at least four milestones,” because a narrower authoritative plan is still valid and should stay buildable.
+- Discovery: validating the wrapper by invoking the compiled CLI from build-check catches wiring drift that pure module-level assertions would miss.
 
-### [x] T2 - Convert core planning and run-state modules under `src/core/` to TypeScript
-- Converted the plan, run-state, contracts, events, health, recovery, OpenClaw adapter, and verification modules from `.mjs` to `.ts`.
-- Added a shared `src/core/types.ts` module covering milestone, run snapshot, worker, recovery, and verification document shapes.
-- Preserved the existing machine-readable artifact contracts while switching ESM source imports to `.js` specifiers for NodeNext-compatible TypeScript output.
-- Updated the compiled smoke path so the repo continues to run through `dist/` while the CLI entrypoint itself is still being migrated.
+### [ ] W2 - Refresh README for the wrapper-driven CLI flow
+- Update `README.md` so the primary usage path is the compiled CLI under `dist/src/index.js`.
+- Document the new top-level bootstrap command, the artifacts it writes, and how it reduces manual supervisor glue.
+- Keep lower-level subcommands documented as building blocks, but make the wrapper flow the practical getting-started path.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Discovery: NodeNext TypeScript conversion works cleanly when source files use runtime `.js` specifiers even before the whole tree is renamed, which makes staged ESM migration much safer.
-- Discovery: dynamic object-literal keys for worker heartbeats need an explicit typed baseline in TS, otherwise the stable worker-label contract gets widened into an unsafe index signature.
-
-### [x] T3 - Convert the CLI entrypoint and verification script to TypeScript-aware operation
-- Converted `src/index.mjs` to `src/index.ts` while preserving the command surface and JSON output behavior.
-- Tightened the CLI option typing enough for `tsc` to validate worker/status arguments without changing runtime semantics.
-- Updated runtime references to use compiled `dist/src/index.js` output, including the smoke-init package script and CLI help text.
-- Kept `scripts/build-check.mjs` green against the compiled TypeScript CLI + core flow in this environment.
-- Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Discovery: even with `strict` disabled, the CLI still benefits from explicit narrow casts at the command boundary because worker-role and milestone-status unions catch accidental contract drift immediately.
-- Discovery: once the entrypoint becomes TypeScript, the operator-facing help/examples need to point at compiled output instead of source paths or they quietly teach a broken invocation path.
-
-### [x] T4 - Refresh repository docs for the TypeScript-first layout
-- Updated `README.md`, `docs/EXAMPLE_RUN.md`, and `AGENTS.md` to reference the compiled `dist/src/index.js` CLI path instead of the removed source `.mjs` entrypoint.
-- Refreshed README copy to describe the repo as a TypeScript-first layout that compiles to runnable ESM output under `dist/`.
-- Recorded the final migration verification checkpoint and discoveries in this plan.
-- Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Discovery: for a Node ESM TypeScript repo, operator docs must distinguish source layout (`src/**/*.ts`) from executable layout (`dist/**/*.js`) or users will follow stale source-path examples.
-- Discovery: keeping verification anchored on the same compiled CLI path used in docs makes migration regressions obvious, because documentation drift and runtime drift fail in the same place.
