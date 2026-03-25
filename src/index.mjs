@@ -4,6 +4,12 @@ import path from 'node:path';
 import process from 'node:process';
 
 import {
+  createImplementerContract,
+  createPlannerIntent,
+  selectNextActionableMilestone,
+  writeContractDocument,
+} from './core/contracts.mjs';
+import {
   initializeRunArtifacts,
   rebuildSnapshot,
   transitionMilestone,
@@ -24,6 +30,9 @@ Usage:
   node src/index.mjs init-run --goal <text> --plan <path> --out <snapshot-path> [--run-id <id>]
   node src/index.mjs transition --snapshot <snapshot-path> --milestone <id> --status <status> [--note <text>]
   node src/index.mjs snapshot --snapshot <snapshot-path>
+  node src/index.mjs select-milestone --snapshot <snapshot-path>
+  node src/index.mjs emit-implementer-contract --snapshot <snapshot-path> [--out <contract-path>]
+  node src/index.mjs emit-planner-intent --snapshot <snapshot-path> [--out <intent-path>]
 `);
 }
 
@@ -168,6 +177,44 @@ function main() {
         2,
       ),
     );
+    return;
+  }
+
+  if (command === 'select-milestone') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    const milestone = selectNextActionableMilestone(rebuilt.snapshot);
+    console.log(JSON.stringify(milestone, null, 2));
+    return;
+  }
+
+  if (command === 'emit-implementer-contract') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    const contract = createImplementerContract(rebuilt.snapshot);
+
+    if (typeof options.out === 'string') {
+      const outputPath = writeContractDocument(options.out, contract);
+      console.log(JSON.stringify({ outputPath, milestoneId: contract.milestone?.id ?? null }, null, 2));
+      return;
+    }
+
+    console.log(JSON.stringify(contract, null, 2));
+    return;
+  }
+
+  if (command === 'emit-planner-intent') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    const intent = createPlannerIntent(rebuilt.snapshot);
+
+    if (typeof options.out === 'string') {
+      const outputPath = writeContractDocument(options.out, intent);
+      console.log(JSON.stringify({ outputPath, milestoneId: intent.selectedMilestone?.id ?? null }, null, 2));
+      return;
+    }
+
+    console.log(JSON.stringify(intent, null, 2));
     return;
   }
 

@@ -22,6 +22,8 @@ This bootstrap slice establishes the workflow contract and the first runnable co
   - report the next incomplete milestone
   - initialize a run-state snapshot plus adjacent JSONL event log
   - transition milestone lifecycle state and rebuild the derived snapshot
+  - select the next actionable milestone from durable run state
+  - emit planner-intent and implementer-contract JSON handoff documents
 
 ## Core idea
 
@@ -70,6 +72,30 @@ node src/index.mjs transition \
 ```bash
 node src/index.mjs snapshot --snapshot state/runs/demo-run.json
 ```
+
+### Select the next actionable milestone from the run snapshot
+
+```bash
+node src/index.mjs select-milestone --snapshot state/runs/demo-run.json
+```
+
+### Emit a planner intent
+
+```bash
+node src/index.mjs emit-planner-intent \
+  --snapshot state/runs/demo-run.json \
+  --out state/contracts/demo-planner-intent.json
+```
+
+### Emit an implementer contract
+
+```bash
+node src/index.mjs emit-implementer-contract \
+  --snapshot state/runs/demo-run.json \
+  --out state/contracts/demo-implementer-contract.json
+```
+
+The emitted JSON documents preserve strict single-milestone scope and are designed to be handed to the next worker without relying on freeform prompt state.
 
 ### Build / smoke check
 

@@ -24,11 +24,13 @@ Goal: turn Laizy into a reusable, repo-native autonomous software delivery engin
 - Discovery: storing the full initialized run payload inside the first event makes snapshot rebuilds deterministic without needing a second source of truth.
 - Discovery: keeping snapshots derived and disposable makes watchdog/recovery logic easier to reason about than mutating primary state in place.
 
-### [ ] L3 - Add planner / implementer command contracts
+### [x] L3 - Add planner / implementer command contracts
 - Model worker intents and handoff envelopes as durable JSON documents.
 - Add commands to select the next actionable milestone and emit implementer instructions.
 - Preserve strict single-milestone scope in the emitted work contract.
 - Verification checkpoint: `npm run build`
+- Discovery: carrying milestone bullet details into run snapshots keeps worker contracts specific without forcing later workers to re-parse the markdown plan.
+- Discovery: emitting planner intent separately from the implementer contract creates a stable handoff seam for future watchdog and recovery workers.
 
 ### [ ] L4 - Add watchdog inspection and stall detection
 - Add heartbeat metadata and run-health evaluation.

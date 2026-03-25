@@ -24,6 +24,7 @@ export function createRunState({ runId, goal, repoPath, planPath, milestones, wo
       title: milestone.title,
       status: milestone.completed ? 'completed' : 'planned',
       lineNumber: milestone.lineNumber,
+      details: [...(milestone.details ?? [])],
       updatedAt: now,
       lastNote: null,
     })),

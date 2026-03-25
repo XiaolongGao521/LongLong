@@ -6,23 +6,42 @@ const MILESTONE_PATTERN = /^### \[( |x)\] ([^—-]+?)\s*[—-]\s*(.+)$/;
 export function parseImplementationPlan(planText) {
   const milestones = [];
   const lines = planText.split(/\r?\n/);
+  let currentMilestone = null;
 
   for (let index = 0; index < lines.length; index += 1) {
     const rawLine = lines[index];
     const line = rawLine.trim();
     const match = line.match(MILESTONE_PATTERN);
 
-    if (!match) {
+    if (match) {
+      const [, state, id, title] = match;
+      currentMilestone = {
+        id: id.trim(),
+        title: title.trim(),
+        completed: state === 'x',
+        lineNumber: index + 1,
+        details: [],
+      };
+      milestones.push(currentMilestone);
       continue;
     }
 
-    const [, state, id, title] = match;
-    milestones.push({
-      id: id.trim(),
-      title: title.trim(),
-      completed: state === 'x',
-      lineNumber: index + 1,
-    });
+    if (!currentMilestone) {
+      continue;
+    }
+
+    if (line.startsWith('### ')) {
+      currentMilestone = null;
+      continue;
+    }
+
+    if (!line || line.startsWith('Verification checkpoint:')) {
+      continue;
+    }
+
+    if (line.startsWith('- ')) {
+      currentMilestone.details.push(line.slice(2).trim());
+    }
   }
 
   return milestones;
