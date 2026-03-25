@@ -23,6 +23,12 @@ const VALID_WORKER_NAMES = new Set([
   'laizy-verifier',
 ]);
 
+const VALID_VERIFICATION_STATUSES = new Set([
+  'pending',
+  'passed',
+  'failed',
+]);
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -37,6 +43,18 @@ function ensureWorkerName(worker) {
   if (!VALID_WORKER_NAMES.has(worker)) {
     throw new Error(`Invalid worker name: ${worker}`);
   }
+}
+
+function ensureVerificationStatus(status) {
+  if (!VALID_VERIFICATION_STATUSES.has(status)) {
+    throw new Error(`Invalid verification status: ${status}`);
+  }
+}
+
+function getLatestVerification(snapshot, milestoneId) {
+  return [...snapshot.verification]
+    .reverse()
+    .find((record) => record.milestoneId === milestoneId) ?? null;
 }
 
 export function eventLogPathForSnapshot(snapshotPath) {
@@ -97,6 +115,23 @@ export function createRecoveryActionEvent({ action, reason, worker, milestoneId,
       milestoneId: milestoneId ?? null,
       note: note ?? null,
       source: source ?? 'manual',
+    },
+  };
+}
+
+export function createVerificationRecordedEvent({ milestoneId, command, status, outputPath, summary, reviewerOutput }) {
+  ensureVerificationStatus(status);
+
+  return {
+    type: 'verification.recorded',
+    at: new Date().toISOString(),
+    detail: {
+      milestoneId,
+      command,
+      status,
+      outputPath: outputPath ?? null,
+      summary: summary ?? null,
+      reviewerOutput: reviewerOutput ?? null,
     },
   };
 }
@@ -165,6 +200,13 @@ function applyEvent(snapshot, event) {
     }
 
     ensureMilestoneStatus(event.detail.status);
+    if (event.detail.status === 'completed') {
+      const latestVerification = getLatestVerification(snapshot, milestone.id);
+      if (!latestVerification || latestVerification.status !== 'passed') {
+        throw new Error(`Cannot complete milestone ${milestone.id} without a passed verification result`);
+      }
+    }
+
     milestone.status = event.detail.status;
     milestone.updatedAt = event.at;
     if (event.detail.note) {
@@ -191,6 +233,19 @@ function applyEvent(snapshot, event) {
       milestoneId: event.detail.milestoneId ?? null,
       note: event.detail.note ?? null,
       source: event.detail.source ?? 'manual',
+      at: event.at,
+    });
+  }
+
+  if (event.type === 'verification.recorded') {
+    ensureVerificationStatus(event.detail.status);
+    snapshot.verification.push({
+      milestoneId: event.detail.milestoneId,
+      command: event.detail.command,
+      status: event.detail.status,
+      outputPath: event.detail.outputPath ?? null,
+      summary: event.detail.summary ?? null,
+      reviewerOutput: clone(event.detail.reviewerOutput ?? null),
       at: event.at,
     });
   }
@@ -265,8 +320,16 @@ export function rebuildSnapshot(snapshotPath) {
 export function transitionMilestone(snapshotPath, { milestoneId, status, note }) {
   const resolvedSnapshotPath = path.resolve(snapshotPath);
   const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
-  const event = createMilestoneTransitionEvent({ milestoneId, status, note });
+  const rebuiltBeforeAppend = rebuildSnapshot(resolvedSnapshotPath);
 
+  if (status === 'completed') {
+    const latestVerification = getLatestVerification(rebuiltBeforeAppend.snapshot, milestoneId);
+    if (!latestVerification || latestVerification.status !== 'passed') {
+      throw new Error(`Cannot complete milestone ${milestoneId} without a passed verification result`);
+    }
+  }
+
+  const event = createMilestoneTransitionEvent({ milestoneId, status, note });
   appendRunEvent(resolvedEventLogPath, event);
   const rebuilt = rebuildSnapshot(resolvedSnapshotPath);
 
@@ -294,6 +357,34 @@ export function recordRecoveryAction(snapshotPath, { action, reason, worker, mil
   const resolvedSnapshotPath = path.resolve(snapshotPath);
   const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
   const event = createRecoveryActionEvent({ action, reason, worker, milestoneId, note, source });
+
+  appendRunEvent(resolvedEventLogPath, event);
+  const rebuilt = rebuildSnapshot(resolvedSnapshotPath);
+
+  return {
+    ...rebuilt,
+    event,
+  };
+}
+
+export function recordVerificationResult(snapshotPath, {
+  milestoneId,
+  command,
+  status,
+  outputPath,
+  summary,
+  reviewerOutput,
+}) {
+  const resolvedSnapshotPath = path.resolve(snapshotPath);
+  const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
+  const event = createVerificationRecordedEvent({
+    milestoneId,
+    command,
+    status,
+    outputPath,
+    summary,
+    reviewerOutput,
+  });
 
   appendRunEvent(resolvedEventLogPath, event);
   const rebuilt = rebuildSnapshot(resolvedSnapshotPath);

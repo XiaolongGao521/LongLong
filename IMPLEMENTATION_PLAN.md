@@ -56,11 +56,13 @@ Goal: turn Laizy into a reusable, repo-native autonomous software delivery engin
 - Discovery: emitting transport requests as standalone adapter documents keeps the durable run snapshot portable while still giving supervisors deterministic OpenClaw instructions.
 - Discovery: stable worker-label resolution belongs in one adapter layer so future runtimes can reuse the same orchestration contract without touching core milestone state.
 
-### [ ] L7 - Add verification and reviewer loop scaffolding
-- Model verification commands/results as first-class artifacts.
-- Add reviewer/evaluator output contracts for post-implementation checks.
-- Gate milestone completion on explicit verification status.
-- Verification checkpoint: `npm run build`
+### [x] L7 - Add verification and reviewer loop scaffolding
+- Modeled verification commands and persisted verification results as first-class artifacts.
+- Added reviewer/evaluator output contracts for post-implementation checks.
+- Gated milestone completion on explicit passed verification status.
+- Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
+- Discovery: verification needs its own durable event stream so watchdog and recovery workers can distinguish “not yet verified” from “verified and failed” without scraping logs.
+- Discovery: milestone-completion gating must validate before appending the transition event, otherwise failed completion attempts pollute the run log.
 
 ### [ ] L8 - Add end-to-end example run docs
 - Document a sample brief-to-run flow using the Laizy CLI artifacts.

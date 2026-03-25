@@ -28,6 +28,8 @@ This bootstrap slice establishes the workflow contract and the first runnable co
   - inspect run health and emit machine-readable recovery recommendations
   - plan bounded recovery actions and persist recovery history in the run snapshot
   - emit adapter documents for OpenClaw `sessions_spawn`, `sessions_send`, `sessions_history`, and `cron`
+  - emit verification-command and reviewer-output documents, then persist verification results
+  - gate milestone completion on an explicit passed verification record
 
 ## Core idea
 
@@ -160,6 +162,36 @@ node src/index.mjs emit-openclaw-cron \
 ```
 
 The adapter payloads keep OpenClaw transport/runtime details out of the core run-state model while preserving the stable worker labels from `AGENTS.md`.
+
+### Emit a verification command
+
+```bash
+node src/index.mjs emit-verification-command \
+  --snapshot state/runs/demo-run.json \
+  --command "/usr/bin/node scripts/build-check.mjs" \
+  --out state/verification/demo-command.json
+```
+
+### Emit reviewer output and record a verification result
+
+```bash
+node src/index.mjs emit-reviewer-output \
+  --snapshot state/runs/demo-run.json \
+  --verdict approved \
+  --summary "build-check passed" \
+  --next-action complete-milestone \
+  --out state/verification/demo-review.json
+
+node src/index.mjs record-verification-result \
+  --snapshot state/runs/demo-run.json \
+  --milestone L7 \
+  --command "/usr/bin/node scripts/build-check.mjs" \
+  --status passed \
+  --reviewer-output state/verification/demo-review.json \
+  --summary "build-check passed"
+```
+
+Milestones cannot transition to `completed` until a passed verification result has been recorded for that milestone.
 
 ### Build / smoke check
 

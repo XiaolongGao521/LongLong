@@ -66,10 +66,12 @@ Laizy v1 models five conceptual roles:
 A structured record of what proved a milestone good enough to commit:
 
 - command
-- exit status
-- started/finished timestamps
+- status (`pending`, `passed`, `failed`)
 - summary
 - artifact paths (optional)
+- attached reviewer output contract (optional)
+
+Milestone completion should be gated on an explicit `passed` verification record for the active milestone.
 
 ## Run state machine
 

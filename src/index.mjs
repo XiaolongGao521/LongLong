@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -13,6 +14,7 @@ import {
   initializeRunArtifacts,
   rebuildSnapshot,
   recordRecoveryAction,
+  recordVerificationResult,
   recordWorkerHeartbeat,
   transitionMilestone,
 } from './core/events.mjs';
@@ -37,6 +39,11 @@ import {
   writeOpenClawAdapter,
 } from './core/openclaw.mjs';
 import { createRunState } from './core/run-state.mjs';
+import {
+  createReviewerOutput,
+  createVerificationCommand,
+  writeVerificationDocument,
+} from './core/verification.mjs';
 
 function printHelp() {
   console.log(`Laizy CLI
@@ -58,6 +65,9 @@ Usage:
   node src/index.mjs emit-openclaw-send --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] --message <text> [--mode <append|replace>] [--out <path>]
   node src/index.mjs emit-openclaw-history --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] [--limit <n>] [--since <iso>] [--include-tool-calls] [--out <path>]
   node src/index.mjs emit-openclaw-cron --snapshot <snapshot-path> [--worker <watchdog|planner|recovery>] [--schedule <cron>] [--prompt <text>] [--job-label <label>] [--out <path>]
+  node src/index.mjs emit-verification-command --snapshot <snapshot-path> [--milestone <id>] [--command <text>] [--stage <value>] [--out <path>]
+  node src/index.mjs emit-reviewer-output --snapshot <snapshot-path> [--milestone <id>] [--verdict <approved|changes-requested|needs-review>] [--summary <text>] [--next-action <value>] [--finding <text> ...] [--out <path>]
+  node src/index.mjs record-verification-result --snapshot <snapshot-path> --milestone <id> --command <text> --status <pending|passed|failed> [--output-path <path>] [--summary <text>] [--reviewer-output <path>]
 `);
 }
 
@@ -413,6 +423,76 @@ function main() {
     }
 
     console.log(JSON.stringify(document, null, 2));
+    return;
+  }
+
+  if (command === 'emit-verification-command') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    const document = createVerificationCommand(rebuilt.snapshot, {
+      milestoneId: typeof options.milestone === 'string' ? options.milestone : undefined,
+      command: typeof options.command === 'string' ? options.command : undefined,
+      stage: typeof options.stage === 'string' ? options.stage : undefined,
+    });
+
+    if (typeof options.out === 'string') {
+      const outputPath = writeVerificationDocument(options.out, document);
+      console.log(JSON.stringify({ outputPath, kind: document.kind, milestoneId: document.milestone.id }, null, 2));
+      return;
+    }
+
+    console.log(JSON.stringify(document, null, 2));
+    return;
+  }
+
+  if (command === 'emit-reviewer-output') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    const document = createReviewerOutput(rebuilt.snapshot, {
+      milestoneId: typeof options.milestone === 'string' ? options.milestone : undefined,
+      verdict: typeof options.verdict === 'string' ? options.verdict : undefined,
+      summary: typeof options.summary === 'string' ? options.summary : undefined,
+      nextAction: typeof options['next-action'] === 'string' ? options['next-action'] : undefined,
+      findings: typeof options.finding === 'string' ? [options.finding] : [],
+    });
+
+    if (typeof options.out === 'string') {
+      const outputPath = writeVerificationDocument(options.out, document);
+      console.log(JSON.stringify({ outputPath, kind: document.kind, milestoneId: document.milestone.id }, null, 2));
+      return;
+    }
+
+    console.log(JSON.stringify(document, null, 2));
+    return;
+  }
+
+  if (command === 'record-verification-result') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const milestoneId = requireOption(options, 'milestone');
+    const commandText = requireOption(options, 'command');
+    const status = requireOption(options, 'status');
+    let reviewerOutput = null;
+
+    if (typeof options['reviewer-output'] === 'string') {
+      const reviewerOutputPath = path.resolve(options['reviewer-output']);
+      reviewerOutput = JSON.parse(readFileSync(reviewerOutputPath, 'utf8'));
+    }
+
+    const updated = recordVerificationResult(snapshotPath, {
+      milestoneId,
+      command: commandText,
+      status,
+      outputPath: typeof options['output-path'] === 'string' ? options['output-path'] : undefined,
+      summary: typeof options.summary === 'string' ? options.summary : undefined,
+      reviewerOutput,
+    });
+
+    console.log(JSON.stringify({
+      snapshotPath: updated.snapshotPath,
+      eventLogPath: updated.eventLogPath,
+      event: updated.event,
+      verificationCount: updated.snapshot.verification.length,
+    }, null, 2));
     return;
   }
 

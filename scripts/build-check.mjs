@@ -14,6 +14,7 @@ import {
   initializeRunArtifacts,
   loadRunEvents,
   recordRecoveryAction,
+  recordVerificationResult,
   recordWorkerHeartbeat,
   transitionMilestone,
 } from '../src/core/events.mjs';
@@ -28,6 +29,11 @@ import {
   writeOpenClawAdapter,
 } from '../src/core/openclaw.mjs';
 import { createRunState } from '../src/core/run-state.mjs';
+import {
+  createReviewerOutput,
+  createVerificationCommand,
+  writeVerificationDocument,
+} from '../src/core/verification.mjs';
 
 function assert(condition, message) {
   if (!condition) {
@@ -54,12 +60,13 @@ runNodeCheck('src/core/contracts.mjs');
 runNodeCheck('src/core/health.mjs');
 runNodeCheck('src/core/recovery.mjs');
 runNodeCheck('src/core/openclaw.mjs');
+runNodeCheck('src/core/verification.mjs');
 
 const plan = loadImplementationPlan('IMPLEMENTATION_PLAN.md');
 const summary = summarizePlan(plan.milestones);
 const nextMilestoneId = summary.next?.id;
-assert(summary.total >= 7, 'expected at least seven milestones in IMPLEMENTATION_PLAN.md');
-assert(nextMilestoneId === 'L6', 'expected next incomplete milestone to be L6 after recovery-planning milestone');
+assert(summary.total >= 8, 'expected at least eight milestones in IMPLEMENTATION_PLAN.md');
+assert(nextMilestoneId === 'L7', 'expected next incomplete milestone to be L7 after OpenClaw adapter milestone');
 
 const tempDir = mkdtempSync(path.join(os.tmpdir(), 'laizy-build-'));
 const snapshotPath = path.join(tempDir, 'run.json');
@@ -127,6 +134,25 @@ const spawnAdapterPath = writeOpenClawAdapter(path.join(tempDir, 'adapters', 'sp
 const persistedSpawnAdapter = JSON.parse(readFileSync(spawnAdapterPath, 'utf8'));
 assert(persistedSpawnAdapter.payload.sessionLabel === 'laizy-implementer', 'expected persisted spawn adapter to remain machine-readable');
 
+const verificationCommand = createVerificationCommand(initialized.snapshot, {
+  command: '/usr/bin/node scripts/build-check.mjs',
+});
+assert(verificationCommand.kind === 'verification.command', 'expected verification command document kind');
+assert(verificationCommand.worker === 'laizy-verifier', 'expected verification command to target stable verifier label');
+
+const reviewerOutput = createReviewerOutput(initialized.snapshot, {
+  verdict: 'approved',
+  summary: 'Verification passed cleanly.',
+  findings: [],
+  nextAction: 'complete-milestone',
+});
+assert(reviewerOutput.kind === 'reviewer.output', 'expected reviewer output document kind');
+assert(reviewerOutput.verdict === 'approved', 'expected reviewer output to preserve verdict');
+
+const reviewerOutputPath = writeVerificationDocument(path.join(tempDir, 'verification', 'reviewer.json'), reviewerOutput);
+const persistedReviewerOutput = JSON.parse(readFileSync(reviewerOutputPath, 'utf8'));
+assert(persistedReviewerOutput.verdict === 'approved', 'expected persisted reviewer output to remain machine-readable');
+
 const started = transitionMilestone(snapshotPath, {
   milestoneId: nextMilestoneId,
   status: 'implementing',
@@ -184,23 +210,48 @@ transitionMilestone(snapshotPath, {
   status: 'verifying',
   note: 'verification started',
 });
+
+let completionBlocked = false;
+try {
+  transitionMilestone(snapshotPath, {
+    milestoneId: nextMilestoneId,
+    status: 'completed',
+    note: 'attempted completion without explicit verification result',
+  });
+} catch (error) {
+  completionBlocked = String(error?.message ?? error).includes('without a passed verification result');
+}
+assert(completionBlocked, 'expected milestone completion to be gated on a passed verification result');
+
+const verificationRecord = recordVerificationResult(snapshotPath, {
+  milestoneId: nextMilestoneId,
+  command: '/usr/bin/node scripts/build-check.mjs',
+  status: 'passed',
+  outputPath: reviewerOutputPath,
+  summary: 'build-check passed',
+  reviewerOutput,
+});
+assert(verificationRecord.snapshot.verification.length === 1, 'expected verification result to be persisted in snapshot state');
+assert(verificationRecord.snapshot.verification[0]?.reviewerOutput?.verdict === 'approved', 'expected reviewer output to be retained alongside verification history');
+
 const completed = transitionMilestone(snapshotPath, {
   milestoneId: nextMilestoneId,
   status: 'completed',
   note: 'verification passed',
 });
 
-assert(completed.snapshot.currentMilestoneId === 'L7', 'expected completed milestone to advance current pointer to L7');
+assert(completed.snapshot.currentMilestoneId === 'L8', 'expected completed milestone to advance current pointer to L8');
 assert(completed.snapshot.status === 'planned', 'expected run to return to planned after a milestone completes');
-assert(completed.snapshot.eventCount === 6, 'expected initialization, recovery, heartbeat, and milestone transitions in event log');
+assert(completed.snapshot.eventCount === 7, 'expected initialization, recovery, heartbeat, verification, and milestone transitions in event log');
 
 const persisted = JSON.parse(readFileSync(snapshotPath, 'utf8'));
-assert(persisted.currentMilestoneId === 'L7', 'expected persisted snapshot to point at L7');
+assert(persisted.currentMilestoneId === 'L8', 'expected persisted snapshot to point at L8');
 assert(persisted.milestones.find((milestone) => milestone.id === nextMilestoneId)?.status === 'completed', 'expected persisted active milestone status to be completed');
 assert(persisted.recovery.length === 1, 'expected persisted snapshot to retain recovery action history');
+assert(persisted.verification.length === 1, 'expected persisted snapshot to retain verification history');
 
 const events = loadRunEvents(eventLogPathForSnapshot(snapshotPath));
-assert(events.length === 6, 'expected event log to contain six events');
+assert(events.length === 7, 'expected event log to contain seven events');
 
 rmSync(tempDir, { recursive: true, force: true });
 console.log('build-check: ok');
