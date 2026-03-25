@@ -26,7 +26,7 @@ Goal: convert Laizy from JavaScript `.mjs` modules to a TypeScript-first reposit
 - Discovery: dynamic object-literal keys for worker heartbeats need an explicit typed baseline in TS, otherwise the stable worker-label contract gets widened into an unsafe index signature.
 
 ### [x] T3 - Convert the CLI entrypoint and verification script to TypeScript-aware operation
-- Converted `src/index.ts` to `src/index.ts` while preserving the command surface and JSON output behavior.
+- Converted `src/index.mjs` to `src/index.ts` while preserving the command surface and JSON output behavior.
 - Tightened the CLI option typing enough for `tsc` to validate worker/status arguments without changing runtime semantics.
 - Updated runtime references to use compiled `dist/src/index.js` output, including the smoke-init package script and CLI help text.
 - Kept `scripts/build-check.mjs` green against the compiled TypeScript CLI + core flow in this environment.
