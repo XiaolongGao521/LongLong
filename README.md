@@ -44,13 +44,44 @@ Laizy is not "one big autonomous prompt." It is a deterministic delivery loop wi
 
 ## CLI
 
-### Show the next milestone
+The compiled CLI entrypoint is:
 
 ```bash
-node dist/src/index.js next --plan IMPLEMENTATION_PLAN.md
+node dist/src/index.js
 ```
 
-### Initialize a run file
+### Recommended: bootstrap a run in one step
+
+```bash
+node dist/src/index.js start-run \
+  --goal "Turn a brief into a verified PR" \
+  --plan IMPLEMENTATION_PLAN.md \
+  --out state/runs/demo-run.json
+```
+
+This is the thinnest Laizy-native wrapper over the existing primitives. Instead of manually chaining `init-run`, contract emission, and OpenClaw adapter emission, `start-run` writes a deterministic bootstrap bundle for the active run.
+
+By default it creates:
+
+- `state/runs/demo-run.json` — the current derived snapshot
+- `state/runs/demo-run.events.jsonl` — the append-only event log
+- `state/runs/demo-run.bootstrap/bootstrap-manifest.json` — machine-readable bundle manifest
+- `state/runs/demo-run.bootstrap/planner-intent.json` — current planner handoff
+- `state/runs/demo-run.bootstrap/implementer-contract.json` — bounded implementer contract
+- `state/runs/demo-run.bootstrap/openclaw-implementer-spawn.json` — initial worker spawn adapter
+- `state/runs/demo-run.bootstrap/openclaw-watchdog-cron.json` — watchdog cron adapter
+
+The manifest is the stable document an external supervisor can consume to start the run without recomputing or manually stitching together the first-step artifacts.
+
+Useful options:
+
+- `--run-id <id>` — force a deterministic run id
+- `--bundle-dir <dir>` — override where the bootstrap bundle is written
+- `--runtime <value>` — override the emitted OpenClaw worker runtime
+- `--schedule <cron>` — override the watchdog cron cadence
+- `--prompt <text>` — override the emitted watchdog prompt
+
+### Low-level building block: initialize only the run file
 
 ```bash
 node dist/src/index.js init-run \
@@ -59,10 +90,13 @@ node dist/src/index.js init-run \
   --out state/runs/demo-run.json
 ```
 
-This writes:
+Use `init-run` when you explicitly want only the snapshot/event log without the wrapper bundle.
 
-- `state/runs/demo-run.json` — the current derived snapshot
-- `state/runs/demo-run.events.jsonl` — the append-only event log
+### Show the next milestone
+
+```bash
+node dist/src/index.js next --plan IMPLEMENTATION_PLAN.md
+```
 
 ### Transition a milestone
 
