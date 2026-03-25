@@ -66,30 +66,36 @@ const plan = loadImplementationPlan('IMPLEMENTATION_PLAN.md');
 const summary = summarizePlan(plan.milestones);
 const nextMilestoneId = summary.next?.id;
 assert(summary.total >= 8, 'expected at least eight milestones in IMPLEMENTATION_PLAN.md');
-assert(nextMilestoneId === 'L7', 'expected next incomplete milestone to be L7 after OpenClaw adapter milestone');
+const targetMilestoneId = nextMilestoneId ?? plan.milestones.at(-1)?.id ?? null;
+assert(targetMilestoneId, 'expected IMPLEMENTATION_PLAN.md to contain at least one milestone');
 
 const tempDir = mkdtempSync(path.join(os.tmpdir(), 'laizy-build-'));
 const snapshotPath = path.join(tempDir, 'run.json');
+
+const syntheticMilestones = plan.milestones.map((milestone) => ({
+  ...milestone,
+  completed: milestone.id === targetMilestoneId ? false : milestone.completed,
+}));
 
 const runState = createRunState({
   runId: 'build-check',
   goal: 'Verify event-log-backed run state',
   repoPath: process.cwd(),
   planPath: plan.path,
-  milestones: plan.milestones,
+  milestones: syntheticMilestones,
 });
 
 const initialized = initializeRunArtifacts(snapshotPath, runState);
-assert(initialized.snapshot.currentMilestoneId === nextMilestoneId, `expected initialized run to point at ${nextMilestoneId}`);
+assert(initialized.snapshot.currentMilestoneId === targetMilestoneId, `expected initialized run to point at ${targetMilestoneId}`);
 assert(initialized.snapshot.status === 'planned', 'expected initialized run status to be planned');
 assert(initialized.snapshot.eventCount === 1, 'expected one initialization event');
 assert(
-  (initialized.snapshot.milestones.find((milestone) => milestone.id === nextMilestoneId)?.details.length ?? 0) >= 1,
+  (initialized.snapshot.milestones.find((milestone) => milestone.id === targetMilestoneId)?.details.length ?? 0) >= 1,
   'expected active milestone details to be captured from the implementation plan',
 );
 
 const selected = selectNextActionableMilestone(initialized.snapshot);
-assert(selected?.id === nextMilestoneId, `expected actionable milestone selection to return ${nextMilestoneId}`);
+assert(selected?.id === targetMilestoneId, `expected actionable milestone selection to return ${targetMilestoneId}`);
 
 const plannerIntent = createPlannerIntent(initialized.snapshot, selected);
 assert(plannerIntent.kind === 'planner.intent', 'expected planner intent document kind');
@@ -98,11 +104,11 @@ assert((plannerIntent.selectedMilestone?.details.length ?? 0) >= 1, 'expected pl
 
 const implementerContract = createImplementerContract(initialized.snapshot, selected);
 assert(implementerContract.kind === 'implementer.contract', 'expected implementer contract document kind');
-assert(implementerContract.milestone?.id === nextMilestoneId, `expected implementer contract to target ${nextMilestoneId}`);
+assert(implementerContract.milestone?.id === targetMilestoneId, `expected implementer contract to target ${targetMilestoneId}`);
 
 const contractPath = writeContractDocument(path.join(tempDir, 'contracts', 'implementer.json'), implementerContract);
 const persistedContract = JSON.parse(readFileSync(contractPath, 'utf8'));
-assert(persistedContract.milestone?.id === nextMilestoneId, `expected persisted contract to target ${nextMilestoneId}`);
+assert(persistedContract.milestone?.id === targetMilestoneId, `expected persisted contract to target ${targetMilestoneId}`);
 
 const spawnAdapter = createSessionSpawnAdapter(initialized.snapshot, { worker: 'implementer' });
 assert(spawnAdapter.kind === 'openclaw.sessions_spawn', 'expected spawn adapter document kind');
@@ -154,7 +160,7 @@ const persistedReviewerOutput = JSON.parse(readFileSync(reviewerOutputPath, 'utf
 assert(persistedReviewerOutput.verdict === 'approved', 'expected persisted reviewer output to remain machine-readable');
 
 const started = transitionMilestone(snapshotPath, {
-  milestoneId: nextMilestoneId,
+  milestoneId: targetMilestoneId,
   status: 'implementing',
   note: 'worker picked up milestone',
 });
@@ -171,7 +177,7 @@ assert(
 
 const recoveryPlan = createRecoveryPlan(started.snapshot, stalledReport);
 assert(recoveryPlan.action === 'restart-implementer', 'expected recovery plan to mirror stalled recommendation');
-assert(recoveryPlan.resumeContract?.milestone?.id === nextMilestoneId, 'expected recovery plan to include bounded resume contract');
+assert(recoveryPlan.resumeContract?.milestone?.id === targetMilestoneId, 'expected recovery plan to include bounded resume contract');
 
 const recoveryPlanPath = writeRecoveryPlan(path.join(tempDir, 'recovery', 'plan.json'), recoveryPlan);
 const persistedRecoveryPlan = JSON.parse(readFileSync(recoveryPlanPath, 'utf8'));
@@ -206,7 +212,7 @@ const persistedReport = JSON.parse(readFileSync(reportPath, 'utf8'));
 assert(persistedReport.overallStatus === 'healthy', 'expected persisted health report to remain machine-readable');
 
 transitionMilestone(snapshotPath, {
-  milestoneId: nextMilestoneId,
+  milestoneId: targetMilestoneId,
   status: 'verifying',
   note: 'verification started',
 });
@@ -214,7 +220,7 @@ transitionMilestone(snapshotPath, {
 let completionBlocked = false;
 try {
   transitionMilestone(snapshotPath, {
-    milestoneId: nextMilestoneId,
+    milestoneId: targetMilestoneId,
     status: 'completed',
     note: 'attempted completion without explicit verification result',
   });
@@ -224,7 +230,7 @@ try {
 assert(completionBlocked, 'expected milestone completion to be gated on a passed verification result');
 
 const verificationRecord = recordVerificationResult(snapshotPath, {
-  milestoneId: nextMilestoneId,
+  milestoneId: targetMilestoneId,
   command: '/usr/bin/node scripts/build-check.mjs',
   status: 'passed',
   outputPath: reviewerOutputPath,
@@ -235,18 +241,21 @@ assert(verificationRecord.snapshot.verification.length === 1, 'expected verifica
 assert(verificationRecord.snapshot.verification[0]?.reviewerOutput?.verdict === 'approved', 'expected reviewer output to be retained alongside verification history');
 
 const completed = transitionMilestone(snapshotPath, {
-  milestoneId: nextMilestoneId,
+  milestoneId: targetMilestoneId,
   status: 'completed',
   note: 'verification passed',
 });
 
-assert(completed.snapshot.currentMilestoneId === 'L8', 'expected completed milestone to advance current pointer to L8');
-assert(completed.snapshot.status === 'planned', 'expected run to return to planned after a milestone completes');
+const expectedRemainingMilestoneId = syntheticMilestones.find((milestone) => !milestone.completed && milestone.id !== targetMilestoneId)?.id ?? null;
+const expectedRunStatus = expectedRemainingMilestoneId ? 'planned' : 'completed';
+
+assert(completed.snapshot.currentMilestoneId === expectedRemainingMilestoneId, 'expected completed milestone to advance current pointer to the next incomplete milestone');
+assert(completed.snapshot.status === expectedRunStatus, 'expected run status to reflect whether incomplete milestones remain');
 assert(completed.snapshot.eventCount === 7, 'expected initialization, recovery, heartbeat, verification, and milestone transitions in event log');
 
 const persisted = JSON.parse(readFileSync(snapshotPath, 'utf8'));
-assert(persisted.currentMilestoneId === 'L8', 'expected persisted snapshot to point at L8');
-assert(persisted.milestones.find((milestone) => milestone.id === nextMilestoneId)?.status === 'completed', 'expected persisted active milestone status to be completed');
+assert(persisted.currentMilestoneId === expectedRemainingMilestoneId, 'expected persisted snapshot to point at the next incomplete milestone');
+assert(persisted.milestones.find((milestone) => milestone.id === targetMilestoneId)?.status === 'completed', 'expected persisted active milestone status to be completed');
 assert(persisted.recovery.length === 1, 'expected persisted snapshot to retain recovery action history');
 assert(persisted.verification.length === 1, 'expected persisted snapshot to retain verification history');
 

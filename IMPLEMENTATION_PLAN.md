@@ -64,8 +64,10 @@ Goal: turn Laizy into a reusable, repo-native autonomous software delivery engin
 - Discovery: verification needs its own durable event stream so watchdog and recovery workers can distinguish “not yet verified” from “verified and failed” without scraping logs.
 - Discovery: milestone-completion gating must validate before appending the transition event, otherwise failed completion attempts pollute the run log.
 
-### [ ] L8 - Add end-to-end example run docs
-- Document a sample brief-to-run flow using the Laizy CLI artifacts.
-- Show how the planner, implementer, watchdog, and recovery workers interact.
-- Capture operator expectations for commit/push/closeout behavior.
-- Verification checkpoint: `npm run build`
+### [x] L8 - Add end-to-end example run docs
+- Documented a sample brief-to-run flow using the Laizy CLI artifacts.
+- Showed how the planner, implementer, watchdog, recovery, and verifier workers interact.
+- Captured operator expectations for commit/push/closeout behavior.
+- Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
+- Discovery: a concrete operator walkthrough exposes contract gaps faster than API-only docs because milestone handoffs become testable end-to-end.
+- Discovery: verification tooling should avoid assuming a fixed next milestone so the same smoke check keeps working as the plan advances.

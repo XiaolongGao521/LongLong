@@ -17,6 +17,7 @@ This bootstrap slice establishes the workflow contract and the first runnable co
 - repo-local `AGENTS.md` with the Laizy Ralph-loop operating model
 - `IMPLEMENTATION_PLAN.md` with milestone-based execution order
 - `docs/V1_ARCHITECTURE.md` describing the generalized run model
+- `docs/EXAMPLE_RUN.md` showing an end-to-end brief-to-run flow
 - a small CLI that can:
   - parse `IMPLEMENTATION_PLAN.md`
   - report the next incomplete milestone
@@ -198,6 +199,10 @@ Milestones cannot transition to `completed` until a passed verification result h
 ```bash
 npm run build
 ```
+
+## End-to-end example
+
+See `docs/EXAMPLE_RUN.md` for a full brief → planner → implementer → watchdog → recovery → verifier → closeout walkthrough.
 
 ## Ralph loop entry points
 
