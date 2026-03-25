@@ -1,11 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
+import type { ImplementerContract, PlannerIntent, RunSnapshot, SnapshotMilestone } from './types.js';
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function findMilestone(snapshot, milestoneId) {
+function findMilestone(snapshot: RunSnapshot, milestoneId: string): SnapshotMilestone {
   const milestone = snapshot.milestones.find((candidate) => candidate.id === milestoneId);
 
   if (!milestone) {
@@ -15,7 +17,7 @@ function findMilestone(snapshot, milestoneId) {
   return milestone;
 }
 
-export function selectNextActionableMilestone(snapshot) {
+export function selectNextActionableMilestone(snapshot: RunSnapshot): SnapshotMilestone | null {
   if (snapshot.currentMilestoneId) {
     const current = findMilestone(snapshot, snapshot.currentMilestoneId);
     if (current.status !== 'completed') {
@@ -26,7 +28,10 @@ export function selectNextActionableMilestone(snapshot) {
   return snapshot.milestones.find((milestone) => milestone.status !== 'completed') ?? null;
 }
 
-export function createPlannerIntent(snapshot, milestone = selectNextActionableMilestone(snapshot)) {
+export function createPlannerIntent(
+  snapshot: RunSnapshot,
+  milestone: SnapshotMilestone | null = selectNextActionableMilestone(snapshot),
+): PlannerIntent {
   return {
     schemaVersion: 1,
     kind: 'planner.intent',
@@ -59,7 +64,10 @@ export function createPlannerIntent(snapshot, milestone = selectNextActionableMi
   };
 }
 
-export function createImplementerContract(snapshot, milestone = selectNextActionableMilestone(snapshot)) {
+export function createImplementerContract(
+  snapshot: RunSnapshot,
+  milestone: SnapshotMilestone | null = selectNextActionableMilestone(snapshot),
+): ImplementerContract {
   const plannerIntent = createPlannerIntent(snapshot, milestone);
 
   return {
@@ -85,7 +93,7 @@ export function createImplementerContract(snapshot, milestone = selectNextAction
   };
 }
 
-export function writeContractDocument(outputPath, document) {
+export function writeContractDocument(outputPath: string, document: PlannerIntent | ImplementerContract): string {
   const resolvedOutputPath = path.resolve(outputPath);
   mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
   writeFileSync(resolvedOutputPath, JSON.stringify(document, null, 2) + '\n', 'utf8');

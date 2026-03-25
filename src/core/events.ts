@@ -7,7 +7,16 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 
-const VALID_MILESTONE_STATUSES = new Set([
+import type {
+  ReviewerOutput,
+  RunEvent,
+  RunSnapshot,
+  VerificationStatus,
+  WorkerLabel,
+  MilestoneStatus,
+} from './types.js';
+
+const VALID_MILESTONE_STATUSES = new Set<MilestoneStatus>([
   'planned',
   'implementing',
   'verifying',
@@ -15,7 +24,7 @@ const VALID_MILESTONE_STATUSES = new Set([
   'blocked',
 ]);
 
-const VALID_WORKER_NAMES = new Set([
+const VALID_WORKER_NAMES = new Set<WorkerLabel>([
   'laizy-planner',
   'laizy-implementer',
   'laizy-watchdog',
@@ -23,48 +32,48 @@ const VALID_WORKER_NAMES = new Set([
   'laizy-verifier',
 ]);
 
-const VALID_VERIFICATION_STATUSES = new Set([
+const VALID_VERIFICATION_STATUSES = new Set<VerificationStatus>([
   'pending',
   'passed',
   'failed',
 ]);
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function ensureMilestoneStatus(status) {
-  if (!VALID_MILESTONE_STATUSES.has(status)) {
+function ensureMilestoneStatus(status: string): asserts status is MilestoneStatus {
+  if (!VALID_MILESTONE_STATUSES.has(status as MilestoneStatus)) {
     throw new Error(`Invalid milestone status: ${status}`);
   }
 }
 
-function ensureWorkerName(worker) {
-  if (!VALID_WORKER_NAMES.has(worker)) {
+function ensureWorkerName(worker: string): asserts worker is WorkerLabel {
+  if (!VALID_WORKER_NAMES.has(worker as WorkerLabel)) {
     throw new Error(`Invalid worker name: ${worker}`);
   }
 }
 
-function ensureVerificationStatus(status) {
-  if (!VALID_VERIFICATION_STATUSES.has(status)) {
+function ensureVerificationStatus(status: string): asserts status is VerificationStatus {
+  if (!VALID_VERIFICATION_STATUSES.has(status as VerificationStatus)) {
     throw new Error(`Invalid verification status: ${status}`);
   }
 }
 
-function getLatestVerification(snapshot, milestoneId) {
+function getLatestVerification(snapshot: RunSnapshot, milestoneId: string) {
   return [...snapshot.verification]
     .reverse()
     .find((record) => record.milestoneId === milestoneId) ?? null;
 }
 
-export function eventLogPathForSnapshot(snapshotPath) {
+export function eventLogPathForSnapshot(snapshotPath: string): string {
   const resolved = path.resolve(snapshotPath);
   return resolved.endsWith('.json')
     ? resolved.replace(/\.json$/u, '.events.jsonl')
     : `${resolved}.events.jsonl`;
 }
 
-export function createRunInitializedEvent(runState) {
+export function createRunInitializedEvent(runState: RunSnapshot): RunEvent {
   return {
     type: 'run.initialized',
     at: runState.createdAt,
@@ -74,7 +83,7 @@ export function createRunInitializedEvent(runState) {
   };
 }
 
-export function createMilestoneTransitionEvent({ milestoneId, status, note }) {
+export function createMilestoneTransitionEvent({ milestoneId, status, note }: { milestoneId: string; status: MilestoneStatus; note?: string }): RunEvent {
   ensureMilestoneStatus(status);
 
   return {
@@ -88,7 +97,7 @@ export function createMilestoneTransitionEvent({ milestoneId, status, note }) {
   };
 }
 
-export function createWorkerHeartbeatEvent({ worker, note, metadata }) {
+export function createWorkerHeartbeatEvent({ worker, note, metadata }: { worker: WorkerLabel; note?: string; metadata?: Record<string, unknown> }): RunEvent {
   ensureWorkerName(worker);
 
   return {
@@ -102,7 +111,21 @@ export function createWorkerHeartbeatEvent({ worker, note, metadata }) {
   };
 }
 
-export function createRecoveryActionEvent({ action, reason, worker, milestoneId, note, source }) {
+export function createRecoveryActionEvent({
+  action,
+  reason,
+  worker,
+  milestoneId,
+  note,
+  source,
+}: {
+  action: string;
+  reason: string;
+  worker: WorkerLabel;
+  milestoneId?: string;
+  note?: string;
+  source?: string;
+}): RunEvent {
   ensureWorkerName(worker);
 
   return {
@@ -119,7 +142,21 @@ export function createRecoveryActionEvent({ action, reason, worker, milestoneId,
   };
 }
 
-export function createVerificationRecordedEvent({ milestoneId, command, status, outputPath, summary, reviewerOutput }) {
+export function createVerificationRecordedEvent({
+  milestoneId,
+  command,
+  status,
+  outputPath,
+  summary,
+  reviewerOutput,
+}: {
+  milestoneId: string;
+  command: string;
+  status: VerificationStatus;
+  outputPath?: string;
+  summary?: string;
+  reviewerOutput?: ReviewerOutput | null;
+}): RunEvent {
   ensureVerificationStatus(status);
 
   return {
@@ -136,14 +173,14 @@ export function createVerificationRecordedEvent({ milestoneId, command, status, 
   };
 }
 
-export function appendRunEvent(eventLogPath, event) {
+export function appendRunEvent(eventLogPath: string, event: RunEvent): string {
   const resolvedPath = path.resolve(eventLogPath);
   mkdirSync(path.dirname(resolvedPath), { recursive: true });
   appendFileSync(resolvedPath, `${JSON.stringify(event)}\n`, 'utf8');
   return resolvedPath;
 }
 
-export function loadRunEvents(eventLogPath) {
+export function loadRunEvents(eventLogPath: string): RunEvent[] {
   const resolvedPath = path.resolve(eventLogPath);
 
   if (!existsSync(resolvedPath)) {
@@ -155,17 +192,17 @@ export function loadRunEvents(eventLogPath) {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  return lines.map((line) => JSON.parse(line));
+  return lines.map((line) => JSON.parse(line) as RunEvent);
 }
 
-export function writeSnapshot(snapshotPath, snapshot) {
+export function writeSnapshot(snapshotPath: string, snapshot: RunSnapshot): string {
   const resolvedPath = path.resolve(snapshotPath);
   mkdirSync(path.dirname(resolvedPath), { recursive: true });
   writeFileSync(resolvedPath, JSON.stringify(snapshot, null, 2) + '\n', 'utf8');
   return resolvedPath;
 }
 
-function deriveRunStatus(milestones) {
+function deriveRunStatus(milestones: RunSnapshot['milestones']): RunSnapshot['status'] {
   if (milestones.every((milestone) => milestone.status === 'completed')) {
     return 'completed';
   }
@@ -185,67 +222,71 @@ function deriveRunStatus(milestones) {
   return 'planned';
 }
 
-function deriveCurrentMilestoneId(milestones) {
+function deriveCurrentMilestoneId(milestones: RunSnapshot['milestones']): string | null {
   return milestones.find((milestone) => milestone.status !== 'completed')?.id ?? null;
 }
 
-function applyEvent(snapshot, event) {
+function applyEvent(snapshot: RunSnapshot & { eventCount: number; lastEventAt: string | null }, event: RunEvent): void {
   if (event.type === 'milestone.transition') {
     const milestone = snapshot.milestones.find(
       (candidate) => candidate.id === event.detail.milestoneId,
     );
 
     if (!milestone) {
-      throw new Error(`Unknown milestone for transition: ${event.detail.milestoneId}`);
+      throw new Error(`Unknown milestone for transition: ${String(event.detail.milestoneId)}`);
     }
 
-    ensureMilestoneStatus(event.detail.status);
-    if (event.detail.status === 'completed') {
+    const status = String(event.detail.status);
+    ensureMilestoneStatus(status);
+    if (status === 'completed') {
       const latestVerification = getLatestVerification(snapshot, milestone.id);
       if (!latestVerification || latestVerification.status !== 'passed') {
         throw new Error(`Cannot complete milestone ${milestone.id} without a passed verification result`);
       }
     }
 
-    milestone.status = event.detail.status;
+    milestone.status = status;
     milestone.updatedAt = event.at;
     if (event.detail.note) {
-      milestone.lastNote = event.detail.note;
+      milestone.lastNote = String(event.detail.note);
     }
   }
 
   if (event.type === 'worker.heartbeat') {
-    ensureWorkerName(event.detail.worker);
-    snapshot.workerHeartbeats[event.detail.worker] = {
-      worker: event.detail.worker,
+    const worker = String(event.detail.worker);
+    ensureWorkerName(worker);
+    snapshot.workerHeartbeats[worker] = {
+      worker,
       at: event.at,
-      note: event.detail.note ?? null,
-      metadata: clone(event.detail.metadata ?? {}),
+      note: typeof event.detail.note === 'string' ? event.detail.note : null,
+      metadata: clone((event.detail.metadata as Record<string, unknown> | undefined) ?? {}),
     };
   }
 
   if (event.type === 'recovery.action') {
-    ensureWorkerName(event.detail.worker);
+    const worker = String(event.detail.worker);
+    ensureWorkerName(worker);
     snapshot.recovery.push({
-      action: event.detail.action,
-      reason: event.detail.reason,
-      worker: event.detail.worker,
-      milestoneId: event.detail.milestoneId ?? null,
-      note: event.detail.note ?? null,
-      source: event.detail.source ?? 'manual',
+      action: String(event.detail.action),
+      reason: String(event.detail.reason),
+      worker,
+      milestoneId: typeof event.detail.milestoneId === 'string' ? event.detail.milestoneId : null,
+      note: typeof event.detail.note === 'string' ? event.detail.note : null,
+      source: typeof event.detail.source === 'string' ? event.detail.source : 'manual',
       at: event.at,
     });
   }
 
   if (event.type === 'verification.recorded') {
-    ensureVerificationStatus(event.detail.status);
+    const status = String(event.detail.status);
+    ensureVerificationStatus(status);
     snapshot.verification.push({
-      milestoneId: event.detail.milestoneId,
-      command: event.detail.command,
-      status: event.detail.status,
-      outputPath: event.detail.outputPath ?? null,
-      summary: event.detail.summary ?? null,
-      reviewerOutput: clone(event.detail.reviewerOutput ?? null),
+      milestoneId: String(event.detail.milestoneId),
+      command: String(event.detail.command),
+      status,
+      outputPath: typeof event.detail.outputPath === 'string' ? event.detail.outputPath : null,
+      summary: typeof event.detail.summary === 'string' ? event.detail.summary : null,
+      reviewerOutput: clone((event.detail.reviewerOutput as ReviewerOutput | null | undefined) ?? null),
       at: event.at,
     });
   }
@@ -257,15 +298,18 @@ function applyEvent(snapshot, event) {
   snapshot.status = deriveRunStatus(snapshot.milestones);
 }
 
-export function materializeRunSnapshot(events, { snapshotPath, eventLogPath } = {}) {
+export function materializeRunSnapshot(
+  events: RunEvent[],
+  { snapshotPath, eventLogPath }: { snapshotPath?: string; eventLogPath?: string } = {},
+): RunSnapshot & { eventCount: number; lastEventAt: string | null } {
   const initialized = events.find((event) => event.type === 'run.initialized');
 
   if (!initialized) {
     throw new Error('Missing run.initialized event in event log');
   }
 
-  const seed = clone(initialized.detail.run);
-  const snapshot = {
+  const seed = clone(initialized.detail.run as RunSnapshot);
+  const snapshot: RunSnapshot & { eventCount: number; lastEventAt: string | null } = {
     ...seed,
     snapshotPath: snapshotPath ? path.resolve(snapshotPath) : null,
     eventLogPath: eventLogPath ? path.resolve(eventLogPath) : null,
@@ -280,7 +324,7 @@ export function materializeRunSnapshot(events, { snapshotPath, eventLogPath } = 
   return snapshot;
 }
 
-export function initializeRunArtifacts(snapshotPath, runState) {
+export function initializeRunArtifacts(snapshotPath: string, runState: RunSnapshot) {
   const resolvedSnapshotPath = path.resolve(snapshotPath);
   const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
   const initializedEvent = createRunInitializedEvent(runState);
@@ -299,7 +343,7 @@ export function initializeRunArtifacts(snapshotPath, runState) {
   };
 }
 
-export function rebuildSnapshot(snapshotPath) {
+export function rebuildSnapshot(snapshotPath: string) {
   const resolvedSnapshotPath = path.resolve(snapshotPath);
   const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
   const events = loadRunEvents(resolvedEventLogPath);
@@ -317,7 +361,7 @@ export function rebuildSnapshot(snapshotPath) {
   };
 }
 
-export function transitionMilestone(snapshotPath, { milestoneId, status, note }) {
+export function transitionMilestone(snapshotPath: string, { milestoneId, status, note }: { milestoneId: string; status: MilestoneStatus; note?: string }) {
   const resolvedSnapshotPath = path.resolve(snapshotPath);
   const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
   const rebuiltBeforeAppend = rebuildSnapshot(resolvedSnapshotPath);
@@ -339,7 +383,7 @@ export function transitionMilestone(snapshotPath, { milestoneId, status, note })
   };
 }
 
-export function recordWorkerHeartbeat(snapshotPath, { worker, note, metadata }) {
+export function recordWorkerHeartbeat(snapshotPath: string, { worker, note, metadata }: { worker: WorkerLabel; note?: string; metadata?: Record<string, unknown> }) {
   const resolvedSnapshotPath = path.resolve(snapshotPath);
   const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
   const event = createWorkerHeartbeatEvent({ worker, note, metadata });
@@ -353,7 +397,10 @@ export function recordWorkerHeartbeat(snapshotPath, { worker, note, metadata }) 
   };
 }
 
-export function recordRecoveryAction(snapshotPath, { action, reason, worker, milestoneId, note, source }) {
+export function recordRecoveryAction(
+  snapshotPath: string,
+  { action, reason, worker, milestoneId, note, source }: { action: string; reason: string; worker: WorkerLabel; milestoneId?: string; note?: string; source?: string },
+) {
   const resolvedSnapshotPath = path.resolve(snapshotPath);
   const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
   const event = createRecoveryActionEvent({ action, reason, worker, milestoneId, note, source });
@@ -367,14 +414,24 @@ export function recordRecoveryAction(snapshotPath, { action, reason, worker, mil
   };
 }
 
-export function recordVerificationResult(snapshotPath, {
-  milestoneId,
-  command,
-  status,
-  outputPath,
-  summary,
-  reviewerOutput,
-}) {
+export function recordVerificationResult(
+  snapshotPath: string,
+  {
+    milestoneId,
+    command,
+    status,
+    outputPath,
+    summary,
+    reviewerOutput,
+  }: {
+    milestoneId: string;
+    command: string;
+    status: VerificationStatus;
+    outputPath?: string;
+    summary?: string;
+    reviewerOutput?: ReviewerOutput | null;
+  },
+) {
   const resolvedSnapshotPath = path.resolve(snapshotPath);
   const resolvedEventLogPath = eventLogPathForSnapshot(resolvedSnapshotPath);
   const event = createVerificationRecordedEvent({

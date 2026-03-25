@@ -30,14 +30,14 @@ function importBuiltModule(relativePath) {
 
 run('/usr/bin/npx', ['tsc', '-p', 'tsconfig.json']);
 run(process.execPath, ['--check', 'dist/src/index.mjs']);
-run(process.execPath, ['--check', 'dist/src/core/plan.mjs']);
-run(process.execPath, ['--check', 'dist/src/core/run-state.mjs']);
-run(process.execPath, ['--check', 'dist/src/core/events.mjs']);
-run(process.execPath, ['--check', 'dist/src/core/contracts.mjs']);
-run(process.execPath, ['--check', 'dist/src/core/health.mjs']);
-run(process.execPath, ['--check', 'dist/src/core/recovery.mjs']);
-run(process.execPath, ['--check', 'dist/src/core/openclaw.mjs']);
-run(process.execPath, ['--check', 'dist/src/core/verification.mjs']);
+run(process.execPath, ['--check', 'dist/src/core/plan.js']);
+run(process.execPath, ['--check', 'dist/src/core/run-state.js']);
+run(process.execPath, ['--check', 'dist/src/core/events.js']);
+run(process.execPath, ['--check', 'dist/src/core/contracts.js']);
+run(process.execPath, ['--check', 'dist/src/core/health.js']);
+run(process.execPath, ['--check', 'dist/src/core/recovery.js']);
+run(process.execPath, ['--check', 'dist/src/core/openclaw.js']);
+run(process.execPath, ['--check', 'dist/src/core/verification.js']);
 
 const [
   contractsModule,
@@ -49,14 +49,14 @@ const [
   runStateModule,
   verificationModule,
 ] = await Promise.all([
-  importBuiltModule('dist/src/core/contracts.mjs'),
-  importBuiltModule('dist/src/core/events.mjs'),
-  importBuiltModule('dist/src/core/health.mjs'),
-  importBuiltModule('dist/src/core/plan.mjs'),
-  importBuiltModule('dist/src/core/recovery.mjs'),
-  importBuiltModule('dist/src/core/openclaw.mjs'),
-  importBuiltModule('dist/src/core/run-state.mjs'),
-  importBuiltModule('dist/src/core/verification.mjs'),
+  importBuiltModule('dist/src/core/contracts.js'),
+  importBuiltModule('dist/src/core/events.js'),
+  importBuiltModule('dist/src/core/health.js'),
+  importBuiltModule('dist/src/core/plan.js'),
+  importBuiltModule('dist/src/core/recovery.js'),
+  importBuiltModule('dist/src/core/openclaw.js'),
+  importBuiltModule('dist/src/core/run-state.js'),
+  importBuiltModule('dist/src/core/verification.js'),
 ]);
 
 const {

@@ -9,7 +9,7 @@ import {
   createPlannerIntent,
   selectNextActionableMilestone,
   writeContractDocument,
-} from './core/contracts.mjs';
+} from './core/contracts.js';
 import {
   initializeRunArtifacts,
   rebuildSnapshot,
@@ -17,33 +17,33 @@ import {
   recordVerificationResult,
   recordWorkerHeartbeat,
   transitionMilestone,
-} from './core/events.mjs';
+} from './core/events.js';
 import {
   evaluateRunHealth,
   writeHealthReport,
-} from './core/health.mjs';
+} from './core/health.js';
 import {
   getNextIncompleteMilestone,
   loadImplementationPlan,
   summarizePlan,
-} from './core/plan.mjs';
+} from './core/plan.js';
 import {
   createRecoveryPlan,
   writeRecoveryPlan,
-} from './core/recovery.mjs';
+} from './core/recovery.js';
 import {
   createCronAdapter,
   createSessionHistoryAdapter,
   createSessionSendAdapter,
   createSessionSpawnAdapter,
   writeOpenClawAdapter,
-} from './core/openclaw.mjs';
-import { createRunState } from './core/run-state.mjs';
+} from './core/openclaw.js';
+import { createRunState } from './core/run-state.js';
 import {
   createReviewerOutput,
   createVerificationCommand,
   writeVerificationDocument,
-} from './core/verification.mjs';
+} from './core/verification.js';
 
 function printHelp() {
   console.log(`Laizy CLI

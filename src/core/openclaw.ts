@@ -1,11 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { createImplementerContract } from './contracts.mjs';
-import { evaluateRunHealth } from './health.mjs';
-import { createRecoveryPlan } from './recovery.mjs';
+import { createImplementerContract } from './contracts.js';
+import { evaluateRunHealth } from './health.js';
+import { createRecoveryPlan } from './recovery.js';
 
-const VALID_ADAPTER_WORKERS = new Set([
+import type { RunSnapshot, WorkerRole } from './types.js';
+
+const VALID_ADAPTER_WORKERS = new Set<WorkerRole>([
   'planner',
   'implementer',
   'watchdog',
@@ -13,7 +15,7 @@ const VALID_ADAPTER_WORKERS = new Set([
   'verifier',
 ]);
 
-function resolveWorker(snapshot, workerRole) {
+function resolveWorker(snapshot: RunSnapshot, workerRole: WorkerRole) {
   if (!VALID_ADAPTER_WORKERS.has(workerRole)) {
     throw new Error(`Unsupported worker role for OpenClaw adapter: ${workerRole}`);
   }
@@ -24,7 +26,7 @@ function resolveWorker(snapshot, workerRole) {
   };
 }
 
-function resolveMilestone(snapshot, milestoneId = snapshot.currentMilestoneId) {
+function resolveMilestone(snapshot: RunSnapshot, milestoneId: string | null = snapshot.currentMilestoneId) {
   if (!milestoneId) {
     return null;
   }
@@ -32,7 +34,17 @@ function resolveMilestone(snapshot, milestoneId = snapshot.currentMilestoneId) {
   return snapshot.milestones.find((milestone) => milestone.id === milestoneId) ?? null;
 }
 
-function createAdapterEnvelope({ operation, snapshot, worker, payload }) {
+function createAdapterEnvelope({
+  operation,
+  snapshot,
+  worker,
+  payload,
+}: {
+  operation: string;
+  snapshot: RunSnapshot;
+  worker: ReturnType<typeof resolveWorker>;
+  payload: Record<string, unknown>;
+}) {
   return {
     schemaVersion: 1,
     kind: `openclaw.${operation}`,
@@ -47,9 +59,12 @@ function createAdapterEnvelope({ operation, snapshot, worker, payload }) {
   };
 }
 
-export function createSessionSpawnAdapter(snapshot, options = {}) {
+export function createSessionSpawnAdapter(
+  snapshot: RunSnapshot,
+  options: { worker?: WorkerRole; milestoneId?: string; runtime?: string; healthOptions?: { now?: string; stallThresholdMinutes?: number } } = {},
+) {
   const worker = resolveWorker(snapshot, options.worker ?? 'implementer');
-  const milestone = resolveMilestone(snapshot, options.milestoneId);
+  const milestone = resolveMilestone(snapshot, options.milestoneId ?? null);
   const runtime = options.runtime ?? 'subagent';
   const contract = worker.role === 'implementer'
     ? createImplementerContract(snapshot, milestone)
@@ -78,7 +93,10 @@ export function createSessionSpawnAdapter(snapshot, options = {}) {
   });
 }
 
-export function createSessionSendAdapter(snapshot, options = {}) {
+export function createSessionSendAdapter(
+  snapshot: RunSnapshot,
+  options: { worker?: WorkerRole; message?: string; mode?: string } = {},
+) {
   const worker = resolveWorker(snapshot, options.worker ?? 'implementer');
 
   return createAdapterEnvelope({
@@ -97,7 +115,10 @@ export function createSessionSendAdapter(snapshot, options = {}) {
   });
 }
 
-export function createSessionHistoryAdapter(snapshot, options = {}) {
+export function createSessionHistoryAdapter(
+  snapshot: RunSnapshot,
+  options: { worker?: WorkerRole; limit?: number; since?: string; includeToolCalls?: boolean } = {},
+) {
   const worker = resolveWorker(snapshot, options.worker ?? 'implementer');
 
   return createAdapterEnvelope({
@@ -117,7 +138,10 @@ export function createSessionHistoryAdapter(snapshot, options = {}) {
   });
 }
 
-export function createCronAdapter(snapshot, options = {}) {
+export function createCronAdapter(
+  snapshot: RunSnapshot,
+  options: { worker?: Extract<WorkerRole, 'watchdog' | 'planner' | 'recovery'>; schedule?: string; prompt?: string; jobLabel?: string } = {},
+) {
   const worker = resolveWorker(snapshot, options.worker ?? 'watchdog');
   const schedule = options.schedule ?? '*/5 * * * *';
   const prompt = options.prompt
@@ -141,7 +165,7 @@ export function createCronAdapter(snapshot, options = {}) {
   });
 }
 
-export function writeOpenClawAdapter(outputPath, document) {
+export function writeOpenClawAdapter(outputPath: string, document: object): string {
   const resolvedOutputPath = path.resolve(outputPath);
   mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
   writeFileSync(resolvedOutputPath, JSON.stringify(document, null, 2) + '\n', 'utf8');

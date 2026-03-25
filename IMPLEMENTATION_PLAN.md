@@ -16,11 +16,14 @@ Goal: convert Laizy from JavaScript `.mjs` modules to a TypeScript-first reposit
 - Discovery: `allowJs` + `NodeNext` lets the repo adopt a TS-first build pipeline before the source conversion is complete, which keeps each migration slice runnable.
 - Discovery: the verification script should derive stall-check timestamps from the active snapshot rather than hard-coding dates, otherwise time-sensitive health assertions become flaky.
 
-### [ ] T2 - Convert core planning and run-state modules under `src/core/` to TypeScript
-- Convert the plan, run-state, contracts, events, health, recovery, OpenClaw adapter, and verification modules from `.mjs` to `.ts`.
-- Add explicit shared TypeScript types for milestones, run snapshots, events, adapters, recovery documents, and verification artifacts where that improves safety.
-- Preserve current runtime behavior and machine-readable artifact shapes.
-- Keep ESM-compatible imports/exports and compile cleanly through the new TS build.
+### [x] T2 - Convert core planning and run-state modules under `src/core/` to TypeScript
+- Converted the plan, run-state, contracts, events, health, recovery, OpenClaw adapter, and verification modules from `.mjs` to `.ts`.
+- Added a shared `src/core/types.ts` module covering milestone, run snapshot, worker, recovery, and verification document shapes.
+- Preserved the existing machine-readable artifact contracts while switching ESM source imports to `.js` specifiers for NodeNext-compatible TypeScript output.
+- Updated the compiled smoke path so the repo continues to run through `dist/` while the CLI entrypoint itself is still being migrated.
+- Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
+- Discovery: NodeNext TypeScript conversion works cleanly when source files use runtime `.js` specifiers even before the whole tree is renamed, which makes staged ESM migration much safer.
+- Discovery: dynamic object-literal keys for worker heartbeats need an explicit typed baseline in TS, otherwise the stable worker-label contract gets widened into an unsafe index signature.
 
 ### [ ] T3 - Convert the CLI entrypoint and verification script to TypeScript-aware operation
 - Convert `src/index.mjs` to `src/index.ts` and keep command behavior unchanged.

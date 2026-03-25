@@ -1,11 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
+import type { ReviewerOutput, RunSnapshot, SnapshotMilestone, VerificationStatus } from './types.js';
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function findMilestone(snapshot, milestoneId) {
+function findMilestone(snapshot: RunSnapshot, milestoneId: string): SnapshotMilestone {
   const milestone = snapshot.milestones.find((candidate) => candidate.id === milestoneId);
 
   if (!milestone) {
@@ -15,8 +17,11 @@ function findMilestone(snapshot, milestoneId) {
   return milestone;
 }
 
-export function createVerificationCommand(snapshot, options = {}) {
-  const milestone = findMilestone(snapshot, options.milestoneId ?? snapshot.currentMilestoneId);
+export function createVerificationCommand(
+  snapshot: RunSnapshot,
+  options: { milestoneId?: string; command?: string; stage?: string } = {},
+) {
+  const milestone = findMilestone(snapshot, options.milestoneId ?? snapshot.currentMilestoneId!);
 
   return {
     schemaVersion: 1,
@@ -43,8 +48,11 @@ export function createVerificationCommand(snapshot, options = {}) {
   };
 }
 
-export function createReviewerOutput(snapshot, options = {}) {
-  const milestone = findMilestone(snapshot, options.milestoneId ?? snapshot.currentMilestoneId);
+export function createReviewerOutput(
+  snapshot: RunSnapshot,
+  options: { milestoneId?: string; verdict?: string; summary?: string; findings?: string[]; nextAction?: string } = {},
+): ReviewerOutput {
+  const milestone = findMilestone(snapshot, options.milestoneId ?? snapshot.currentMilestoneId!);
 
   return {
     schemaVersion: 1,
@@ -71,6 +79,13 @@ export function createVerificationResultRecord({
   outputPath,
   summary,
   reviewerOutput,
+}: {
+  milestoneId: string;
+  command: string;
+  status: VerificationStatus;
+  outputPath?: string;
+  summary?: string;
+  reviewerOutput?: ReviewerOutput | null;
 }) {
   return {
     milestoneId,
@@ -82,7 +97,7 @@ export function createVerificationResultRecord({
   };
 }
 
-export function writeVerificationDocument(outputPath, document) {
+export function writeVerificationDocument(outputPath: string, document: object): string {
   const resolvedOutputPath = path.resolve(outputPath);
   mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
   writeFileSync(resolvedOutputPath, JSON.stringify(document, null, 2) + '\n', 'utf8');

@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import type { MilestonePlanEntry } from './types.js';
+
 const MILESTONE_PATTERN = /^### \[( |x)\] ([^—-]+?)\s*[—-]\s*(.+)$/;
 
-export function parseImplementationPlan(planText) {
-  const milestones = [];
+export function parseImplementationPlan(planText: string): MilestonePlanEntry[] {
+  const milestones: MilestonePlanEntry[] = [];
   const lines = planText.split(/\r?\n/);
-  let currentMilestone = null;
+  let currentMilestone: MilestonePlanEntry | null = null;
 
   for (let index = 0; index < lines.length; index += 1) {
     const rawLine = lines[index];
@@ -47,7 +49,7 @@ export function parseImplementationPlan(planText) {
   return milestones;
 }
 
-export function loadImplementationPlan(planPath) {
+export function loadImplementationPlan(planPath: string) {
   const absolutePlanPath = path.resolve(planPath);
   const planText = readFileSync(absolutePlanPath, 'utf8');
   const milestones = parseImplementationPlan(planText);
@@ -59,11 +61,11 @@ export function loadImplementationPlan(planPath) {
   };
 }
 
-export function getNextIncompleteMilestone(milestones) {
+export function getNextIncompleteMilestone(milestones: MilestonePlanEntry[]): MilestonePlanEntry | null {
   return milestones.find((milestone) => !milestone.completed) ?? null;
 }
 
-export function summarizePlan(milestones) {
+export function summarizePlan(milestones: MilestonePlanEntry[]) {
   const completed = milestones.filter((milestone) => milestone.completed).length;
   const pending = milestones.length - completed;
 

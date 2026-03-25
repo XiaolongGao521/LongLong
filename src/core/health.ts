@@ -1,17 +1,19 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import type { HealthReport, RecoveryRecommendation, RunSnapshot, WorkerHeartbeat, WorkerLabel } from './types.js';
+
 const DEFAULT_STALL_THRESHOLD_MINUTES = 15;
 
-function toTimestamp(value) {
+function toTimestamp(value: string | null | undefined): number {
   return value ? Date.parse(value) : Number.NaN;
 }
 
-function getWorkerHeartbeat(snapshot, workerName) {
+function getWorkerHeartbeat(snapshot: RunSnapshot, workerName: WorkerLabel): WorkerHeartbeat | null {
   return snapshot.workerHeartbeats?.[workerName] ?? null;
 }
 
-function getMilestone(snapshot, milestoneId) {
+function getMilestone(snapshot: RunSnapshot, milestoneId: string | null): RunSnapshot['milestones'][number] | null {
   return snapshot.milestones.find((milestone) => milestone.id === milestoneId) ?? null;
 }
 
@@ -21,7 +23,13 @@ export function createRecoveryRecommendation({
   worker,
   milestoneId = null,
   severity = 'info',
-}) {
+}: {
+  action: string;
+  reason: string;
+  worker: WorkerLabel;
+  milestoneId?: string | null;
+  severity?: string;
+}): RecoveryRecommendation {
   return {
     schemaVersion: 1,
     kind: 'recovery.recommendation',
@@ -34,7 +42,10 @@ export function createRecoveryRecommendation({
   };
 }
 
-export function evaluateRunHealth(snapshot, options = {}) {
+export function evaluateRunHealth(
+  snapshot: RunSnapshot,
+  options: { now?: string; stallThresholdMinutes?: number } = {},
+): HealthReport {
   const checkedAt = options.now ?? new Date().toISOString();
   const stallThresholdMinutes = Number(options.stallThresholdMinutes ?? DEFAULT_STALL_THRESHOLD_MINUTES);
   const stallThresholdMs = stallThresholdMinutes * 60 * 1000;
@@ -121,7 +132,7 @@ export function evaluateRunHealth(snapshot, options = {}) {
   };
 }
 
-export function writeHealthReport(outputPath, report) {
+export function writeHealthReport(outputPath: string, report: HealthReport): string {
   const resolvedOutputPath = path.resolve(outputPath);
   mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
   writeFileSync(resolvedOutputPath, JSON.stringify(report, null, 2) + '\n', 'utf8');
