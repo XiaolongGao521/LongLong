@@ -16,11 +16,11 @@ Goal: make Laizy publishable on npm and add Apache-2.0 licensing, using the Laiz
 - Limited the intended published artifact to compiled runtime assets plus required package docs (`dist/`, `README.md`, `LICENSE`).
 - Verification checkpoint passed: `/usr/bin/node scripts/build-check.mjs`
 
-### [ ] P2 - Make the package packable from a clean checkout
-- Wire the package scripts and packaging controls so `npm pack --dry-run` can succeed from a fresh clone without depending on committed `dist/` output.
-- Validate that the tarball includes the compiled CLI/runtime entrypoint and excludes development-only paths such as local run state, source-control noise, and other repo-internal artifacts.
-- Prefer the smallest compatible change set (`files`, `.npmignore`, `prepack`/`prepare`, or related package wiring) that preserves the current local developer workflow.
-- Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
+### [x] P2 - Make the package packable from a clean checkout
+- Added a minimal `prepack` compile step so `npm pack --dry-run` can rebuild `dist/` even when generated output is absent from git.
+- Validated the tarball surface after removing `dist/`: the package included the compiled CLI/runtime entrypoint and excluded repo-internal state/noise, shipping only the intended files.
+- Kept the change set narrow and compatible with the existing local workflow by reusing the existing TypeScript compile command rather than broader packaging changes.
+- Verification checkpoint passed: `/usr/bin/node scripts/build-check.mjs`
 
 ### [ ] P3 - Refresh README/publish docs and finish package verification
 - Update `README.md` with npm install/usage guidance, publish expectations, and the Apache-2.0 license notice for the packaged CLI.
