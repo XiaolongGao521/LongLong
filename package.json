@@ -39,7 +39,7 @@
     "compile": "/usr/bin/npx tsc -p tsconfig.json",
     "typecheck": "/usr/bin/npx tsc -p tsconfig.json --noEmit",
     "prepack": "/usr/bin/npx tsc -p tsconfig.json",
-    "smoke:init": "/usr/bin/npx tsc -p tsconfig.json && node dist/src/index.js init-run --goal \"smoke test\" --plan IMPLEMENTATION_PLAN.md --out /tmp/laizy-smoke-run.json",
+    "smoke:init": "/usr/bin/npx tsc -p tsconfig.json && node dist/src/index.js init-run --goal \"smoke test\" --plan examples/demo-implementation-plan.md --out /tmp/laizy-smoke-run.json",
     "ralph:plan": "/root/.openclaw/workspace/ralph-loop.sh --repo \"$PWD\" --mode planning",
     "ralph:build": "/root/.openclaw/workspace/ralph-loop.sh --repo \"$PWD\" --mode build"
   },

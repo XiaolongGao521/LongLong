@@ -100,13 +100,13 @@ const {
 } = verificationModule;
 const { createSupervisorDecision, writeSupervisorBundle } = supervisorModule;
 
-const plan = loadImplementationPlan('IMPLEMENTATION_PLAN.md');
+const plan = loadImplementationPlan('examples/demo-implementation-plan.md');
 const summary = summarizePlan(plan.milestones);
 const nextMilestoneId = summary.next?.id;
 const planHasIncompleteMilestones = Boolean(nextMilestoneId);
-assert(summary.total >= 1, 'expected IMPLEMENTATION_PLAN.md to contain at least one milestone');
+assert(summary.total >= 1, 'expected demo implementation plan to contain at least one milestone');
 const targetMilestoneId = nextMilestoneId ?? plan.milestones.at(-1)?.id ?? null;
-assert(targetMilestoneId, 'expected IMPLEMENTATION_PLAN.md to contain at least one milestone');
+assert(targetMilestoneId, 'expected demo implementation plan to contain at least one milestone');
 
 const tempDir = mkdtempSync(path.join(os.tmpdir(), 'laizy-build-'));
 const snapshotPath = path.join(tempDir, 'run.json');
@@ -199,7 +199,7 @@ const startRunResult = run(process.execPath, [
   '--goal',
   'Bootstrap a deterministic supervised run',
   '--plan',
-  'IMPLEMENTATION_PLAN.md',
+  'examples/demo-implementation-plan.md',
   '--out',
   cliBootstrapSnapshotPath,
   '--run-id',

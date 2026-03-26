@@ -11,7 +11,7 @@ This is a concrete brief-to-run example showing the durable artifacts Laizy expe
 ```bash
 node dist/src/index.js init-run \
   --goal "Add verification-loop scaffolding to Laizy" \
-  --plan IMPLEMENTATION_PLAN.md \
+  --plan examples/demo-implementation-plan.md \
   --out state/runs/example-run.json
 ```
 

@@ -29,13 +29,13 @@ This file provides guidance to AI coding agents working in the Laizy repository.
 
 ## Common commands
 - Build / smoke verification: `npm run build`
-- Print next milestone: `node dist/src/index.js next --plan IMPLEMENTATION_PLAN.md`
-- Initialize run state: `node dist/src/index.js init-run --goal \"...\" --plan IMPLEMENTATION_PLAN.md --out state/runs/<run-id>.json`
+- Public example next milestone: `node dist/src/index.js next --plan examples/demo-implementation-plan.md`
+- Public example init-run: `node dist/src/index.js init-run --goal \"...\" --plan examples/demo-implementation-plan.md --out state/runs/<run-id>.json`
 - Transition milestone state: `node dist/src/index.js transition --snapshot state/runs/<run-id>.json --milestone <id> --status implementing|verifying|completed|blocked`
 - Rebuild snapshot from event log: `node dist/src/index.js snapshot --snapshot state/runs/<run-id>.json`
 - Ralph planning loop: `npm run ralph:plan`
 - Ralph build loop: `npm run ralph:build`
-- Ralph completion tip: if `IMPLEMENTATION_PLAN.md` has no unchecked (`[ ]`) tasks left, run `npm run build`, record the checkpoint in the plan, and stop.
+- Ralph completion tip: if your active local `IMPLEMENTATION_PLAN.md` has no unchecked (`[ ]`) tasks left, run `npm run build`, record the checkpoint in the plan, and stop.
 
 ## Project purpose
 
@@ -48,7 +48,7 @@ Laizy generalizes the SillyAvatar Ralph-loop into a reusable autonomous software
 - strong verification before declaring completion
 
 ## Architecture guardrails
-- Treat `IMPLEMENTATION_PLAN.md` as the authoritative execution queue.
+- Treat the active plan file (commonly a local `IMPLEMENTATION_PLAN.md`) as the authoritative execution queue.
 - Prefer additive and compatibility-preserving changes.
 - Keep milestone scope narrow; do not widen the current slice unless the plan explicitly requires it.
 - Encode worker interactions as durable files and machine-readable state before adding UI.

@@ -37,7 +37,7 @@ npx laizy --help
 ```bash
 laizy start-run \
   --goal "Turn a brief into a verified PR" \
-  --plan IMPLEMENTATION_PLAN.md \
+  --plan examples/demo-implementation-plan.md \
   --out state/runs/demo-run.json
 ```
 
@@ -63,12 +63,10 @@ That flow is designed to:
 
 Laizy is already usable as a TypeScript-first CLI and orchestration layer with:
 
-- repo-local `AGENTS.md` with the Laizy Ralph-loop operating model
-- `IMPLEMENTATION_PLAN.md` with milestone-based execution order
-- `docs/V1_ARCHITECTURE.md` describing the generalized run model
-- `docs/EXAMPLE_RUN.md` showing an end-to-end brief-to-run flow
+- public architecture and example docs under `docs/`
+- a generic example plan under `examples/demo-implementation-plan.md`
 - a small TypeScript CLI (`src/**/*.ts`) that compiles to runnable ESM output under `dist/` and can:
-  - parse `IMPLEMENTATION_PLAN.md`
+  - parse a user-provided milestone plan file (commonly named `IMPLEMENTATION_PLAN.md`)
   - report the next incomplete milestone
   - initialize a run-state snapshot plus adjacent JSONL event log
   - transition milestone lifecycle state and rebuild the derived snapshot
@@ -86,7 +84,7 @@ Laizy is already usable as a TypeScript-first CLI and orchestration layer with:
 Laizy is not "one big autonomous prompt." It is a deterministic delivery loop with explicit artifacts:
 
 - **Goal** → what the human wants
-- **Plan** → milestone queue in `IMPLEMENTATION_PLAN.md`
+- **Plan** → a milestone queue (commonly stored as `IMPLEMENTATION_PLAN.md` in the target repo)
 - **Run state** → JSON snapshot for the current execution
 - **Workers** → planner, implementer, watchdog, recovery, verifier
 - **Verification** → build/test/review checks after each milestone
@@ -108,7 +106,7 @@ Bootstrap a run once:
 ```bash
 node dist/src/index.js start-run \
   --goal "Turn a brief into a verified PR" \
-  --plan IMPLEMENTATION_PLAN.md \
+  --plan examples/demo-implementation-plan.md \
   --out state/runs/demo-run.json
 ```
 
@@ -199,7 +197,7 @@ For planner-driven runs specifically, operators should consume `planner.request`
 ```bash
 node dist/src/index.js init-run \
   --goal "Turn a brief into a verified PR" \
-  --plan IMPLEMENTATION_PLAN.md \
+  --plan examples/demo-implementation-plan.md \
   --out state/runs/demo-run.json
 ```
 
@@ -208,7 +206,7 @@ Use `init-run` when you explicitly want only the snapshot/event log without the 
 ### Show the next milestone
 
 ```bash
-node dist/src/index.js next --plan IMPLEMENTATION_PLAN.md
+node dist/src/index.js next --plan examples/demo-implementation-plan.md
 ```
 
 ### Transition a milestone
@@ -317,7 +315,7 @@ node dist/src/index.js emit-openclaw-cron \
   --out state/adapters/demo-watchdog-cron.json
 ```
 
-The adapter payloads keep OpenClaw transport/runtime details out of the core run-state model while preserving the stable worker labels from `AGENTS.md`.
+The adapter payloads keep OpenClaw transport/runtime details out of the core run-state model while preserving stable worker labels across planner, implementer, recovery, and verifier roles.
 
 For runtime-profile-aware flows, spawn/verification artifacts now expose:
 

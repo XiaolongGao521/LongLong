@@ -1,4 +1,7 @@
 node_modules/
 dist/
 state/runs/*
+state/verification/
+*.tgz
+IMPLEMENTATION_PLAN.md
 !state/.gitkeep

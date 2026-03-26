@@ -28,7 +28,7 @@ The target experience is:
 The human request, issue text, or brief that kicked off the run.
 
 ### Plan
-`IMPLEMENTATION_PLAN.md` is the canonical prioritized queue. Each milestone should be:
+A milestone plan file (commonly named `IMPLEMENTATION_PLAN.md` in the target repo) is the canonical prioritized queue. Each milestone should be:
 
 - small
 - verifiable
@@ -96,10 +96,11 @@ any state -> blocked
 ```text
 Laizy/
 ├── AGENTS.md
-├── IMPLEMENTATION_PLAN.md
 ├── README.md
 ├── docs/
 │   └── V1_ARCHITECTURE.md
+├── examples/
+│   └── demo-implementation-plan.md
 ├── src/
 │   ├── core/
 │   │   ├── plan.mjs
