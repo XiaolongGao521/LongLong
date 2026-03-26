@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -68,6 +68,7 @@ const [
 const {
   createImplementerContract,
   createPlannerIntent,
+  createPlannerRequest,
   selectNextActionableMilestone,
   writeContractDocument,
 } = contractsModule;
@@ -126,6 +127,7 @@ const runState = createRunState({
 const initialized = initializeRunArtifacts(snapshotPath, runState);
 assert(initialized.snapshot.currentMilestoneId === targetMilestoneId, `expected initialized run to point at ${targetMilestoneId}`);
 assert(initialized.snapshot.status === 'planned', 'expected initialized run status to be planned');
+assert(initialized.snapshot.planState.status === 'actionable', 'expected initialized run to record actionable plan state');
 assert(initialized.snapshot.eventCount === 1, 'expected one initialization event');
 assert(
   (initialized.snapshot.milestones.find((milestone) => milestone.id === targetMilestoneId)?.details.length ?? 0) >= 1,
@@ -139,6 +141,11 @@ const plannerIntent = createPlannerIntent(initialized.snapshot, selected);
 assert(plannerIntent.kind === 'planner.intent', 'expected planner intent document kind');
 assert(plannerIntent.scope.milestoneCount === 1, 'expected planner intent to enforce single-milestone scope');
 assert((plannerIntent.selectedMilestone?.details.length ?? 0) >= 1, 'expected planner intent to include milestone details');
+
+const plannerRequest = createPlannerRequest(initialized.snapshot);
+assert(plannerRequest.kind === 'planner.request', 'expected planner request document kind');
+assert(plannerRequest.requestedMode === 'plan', 'expected actionable runs to default planner requests to plan mode');
+assert(plannerRequest.currentPlanState.status === 'actionable', 'expected planner request to include current plan state');
 
 const implementerContract = createImplementerContract(initialized.snapshot, selected);
 assert(implementerContract.kind === 'implementer.contract', 'expected implementer contract document kind');
@@ -201,6 +208,7 @@ assert(
 );
 const bootstrapManifest = JSON.parse(readFileSync(startRunOutput.manifestPath, 'utf8'));
 assert(bootstrapManifest.kind === 'run.bootstrap', 'expected start-run to emit a bootstrap manifest');
+assert(bootstrapManifest.planState.status === 'actionable', 'expected bootstrap manifest to surface actionable plan state');
 assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path');
 const bootstrapSpawnAdapter = JSON.parse(readFileSync(bootstrapManifest.documents.implementerSpawn, 'utf8'));
 assert(bootstrapSpawnAdapter.kind === 'openclaw.sessions_spawn', 'expected bootstrap bundle to include a machine-readable spawn adapter');
@@ -408,6 +416,44 @@ assert(persisted.verification.length === 1, 'expected persisted snapshot to reta
 
 const events = loadRunEvents(eventLogPathForSnapshot(snapshotPath));
 assert(events.length === 7, 'expected event log to contain seven events');
+
+const emptyPlanPath = path.join(tempDir, 'EMPTY_IMPLEMENTATION_PLAN.md');
+writeFileSync(emptyPlanPath, '# Empty plan for bootstrap verification\n', 'utf8');
+const emptyRunState = createRunState({
+  runId: 'build-check-empty-plan',
+  goal: 'Verify planner bootstrap request generation',
+  repoPath: process.cwd(),
+  planPath: emptyPlanPath,
+  milestones: [],
+});
+assert(emptyRunState.status === 'planned', 'expected empty plans to remain open for planning instead of closing out');
+assert(emptyRunState.planState.status === 'needs-plan', 'expected empty plans to surface a needs-plan state');
+const emptyPlannerRequest = createPlannerRequest(emptyRunState);
+assert(emptyPlannerRequest.requestedMode === 'plan', 'expected empty plans to request planning mode');
+assert(emptyPlannerRequest.currentPlanState.actionableMilestoneId === null, 'expected empty plans to have no actionable milestone id');
+
+const emptySnapshotPath = path.join(tempDir, 'empty-run.json');
+const emptyStartRunResult = run(process.execPath, [
+  'dist/src/index.js',
+  'start-run',
+  '--goal',
+  'Bootstrap an empty plan run',
+  '--plan',
+  emptyPlanPath,
+  '--out',
+  emptySnapshotPath,
+  '--run-id',
+  'build-check-empty-bootstrap',
+]);
+const emptyStartRunOutput = JSON.parse(emptyStartRunResult.stdout);
+assert(emptyStartRunOutput.currentMilestoneId === null, 'expected empty plan bootstrap output to report no active milestone yet');
+const emptyBootstrapManifest = JSON.parse(readFileSync(emptyStartRunOutput.manifestPath, 'utf8'));
+assert(emptyBootstrapManifest.planState.status === 'needs-plan', 'expected empty plan bootstrap manifest to preserve needs-plan state');
+assert(emptyBootstrapManifest.documents.plannerRequest, 'expected empty plan bootstrap manifest to include a planner request document');
+assert(!emptyBootstrapManifest.documents.implementerSpawn, 'expected empty plan bootstrap manifest to avoid emittting implementer spawn instructions');
+const persistedPlannerRequest = JSON.parse(readFileSync(emptyBootstrapManifest.documents.plannerRequest, 'utf8'));
+assert(persistedPlannerRequest.kind === 'planner.request', 'expected persisted bootstrap planner request to remain machine-readable');
+assert(persistedPlannerRequest.triggerReason.includes('actionable milestones'), 'expected planner request trigger reason to explain the missing actionable plan');
 
 rmSync(tempDir, { recursive: true, force: true });
 console.log('build-check: ok');

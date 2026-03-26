@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import type { ImplementerContract, PlannerIntent, RunSnapshot, SnapshotMilestone } from './types.js';
+import type { ImplementerContract, PlannerIntent, PlannerRequest, RunSnapshot, SnapshotMilestone } from './types.js';
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -26,6 +26,26 @@ export function selectNextActionableMilestone(snapshot: RunSnapshot): SnapshotMi
   }
 
   return snapshot.milestones.find((milestone) => milestone.status !== 'completed') ?? null;
+}
+
+export function createPlannerRequest(snapshot: RunSnapshot): PlannerRequest {
+  return {
+    schemaVersion: 1,
+    kind: 'planner.request',
+    generatedAt: new Date().toISOString(),
+    runId: snapshot.runId,
+    goal: snapshot.goal,
+    repoPath: snapshot.repoPath,
+    planPath: snapshot.planPath,
+    worker: snapshot.workers.planner,
+    targetWorker: snapshot.workers.implementer,
+    requestedMode: snapshot.planState.status === 'completed' ? 'replan' : 'plan',
+    triggerReason: snapshot.planState.reason,
+    currentPlanState: {
+      ...clone(snapshot.planState),
+      actionableMilestoneId: snapshot.currentMilestoneId ?? null,
+    },
+  };
 }
 
 export function createPlannerIntent(
@@ -93,7 +113,7 @@ export function createImplementerContract(
   };
 }
 
-export function writeContractDocument(outputPath: string, document: PlannerIntent | ImplementerContract): string {
+export function writeContractDocument(outputPath: string, document: PlannerRequest | PlannerIntent | ImplementerContract): string {
   const resolvedOutputPath = path.resolve(outputPath);
   mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
   writeFileSync(resolvedOutputPath, JSON.stringify(document, null, 2) + '\n', 'utf8');

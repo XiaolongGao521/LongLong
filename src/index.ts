@@ -7,6 +7,7 @@ import process from 'node:process';
 import {
   createImplementerContract,
   createPlannerIntent,
+  createPlannerRequest,
   selectNextActionableMilestone,
   writeContractDocument,
 } from './core/contracts.js';
@@ -60,6 +61,7 @@ Usage:
   node dist/src/index.js select-milestone --snapshot <snapshot-path>
   node dist/src/index.js emit-implementer-contract --snapshot <snapshot-path> [--out <contract-path>]
   node dist/src/index.js emit-planner-intent --snapshot <snapshot-path> [--out <intent-path>]
+  node dist/src/index.js emit-planner-request --snapshot <snapshot-path> [--out <request-path>]
   node dist/src/index.js heartbeat --snapshot <snapshot-path> --worker <worker-name> [--note <text>]
   node dist/src/index.js inspect-health --snapshot <snapshot-path> [--stall-threshold-minutes <n>] [--now <iso>] [--out <report-path>]
   node dist/src/index.js plan-recovery --snapshot <snapshot-path> [--stall-threshold-minutes <n>] [--now <iso>] [--out <plan-path>]
@@ -182,6 +184,7 @@ function main() {
             snapshotPath: initialized.snapshotPath,
             eventLogPath: initialized.eventLogPath,
             currentMilestoneId: initialized.snapshot.currentMilestoneId,
+          planState: initialized.snapshot.planState,
           },
           null,
           2,
@@ -195,21 +198,34 @@ function main() {
       ? path.resolve(options['bundle-dir'])
       : defaultBootstrapDir(initialized.snapshotPath);
     const plannerIntent = createPlannerIntent(rebuilt.snapshot);
-    const implementerContract = createImplementerContract(rebuilt.snapshot);
-    const implementerSpawn = createSessionSpawnAdapter(rebuilt.snapshot, {
-      worker: 'implementer',
-      runtime: typeof options.runtime === 'string' ? options.runtime : undefined,
-    });
+    const plannerIntentPath = writeContractDocument(path.join(bundleDir, 'planner-intent.json'), plannerIntent);
     const watchdogCron = createCronAdapter(rebuilt.snapshot, {
       worker: 'watchdog',
       schedule: typeof options.schedule === 'string' ? options.schedule : undefined,
       prompt: typeof options.prompt === 'string' ? options.prompt : undefined,
     });
-
-    const plannerIntentPath = writeContractDocument(path.join(bundleDir, 'planner-intent.json'), plannerIntent);
-    const implementerContractPath = writeContractDocument(path.join(bundleDir, 'implementer-contract.json'), implementerContract);
-    const implementerSpawnPath = writeOpenClawAdapter(path.join(bundleDir, 'openclaw-implementer-spawn.json'), implementerSpawn);
     const watchdogCronPath = writeOpenClawAdapter(path.join(bundleDir, 'openclaw-watchdog-cron.json'), watchdogCron);
+    const documents: Record<string, string> = {
+      plannerIntent: plannerIntentPath,
+      watchdogCron: watchdogCronPath,
+    };
+
+    if (rebuilt.snapshot.planState.status === 'needs-plan') {
+      const plannerRequest = createPlannerRequest(rebuilt.snapshot);
+      const plannerRequestPath = writeContractDocument(path.join(bundleDir, 'planner-request.json'), plannerRequest);
+      documents.plannerRequest = plannerRequestPath;
+    } else {
+      const implementerContract = createImplementerContract(rebuilt.snapshot);
+      const implementerSpawn = createSessionSpawnAdapter(rebuilt.snapshot, {
+        worker: 'implementer',
+        runtime: typeof options.runtime === 'string' ? options.runtime : undefined,
+      });
+      const implementerContractPath = writeContractDocument(path.join(bundleDir, 'implementer-contract.json'), implementerContract);
+      const implementerSpawnPath = writeOpenClawAdapter(path.join(bundleDir, 'openclaw-implementer-spawn.json'), implementerSpawn);
+      documents.implementerContract = implementerContractPath;
+      documents.implementerSpawn = implementerSpawnPath;
+    }
+
     const manifestPath = writeJsonDocument(path.join(bundleDir, 'bootstrap-manifest.json'), {
       schemaVersion: 1,
       kind: 'run.bootstrap',
@@ -222,12 +238,8 @@ function main() {
       eventLogPath: rebuilt.eventLogPath,
       currentMilestoneId: rebuilt.snapshot.currentMilestoneId,
       bundleDir,
-      documents: {
-        plannerIntent: plannerIntentPath,
-        implementerContract: implementerContractPath,
-        implementerSpawn: implementerSpawnPath,
-        watchdogCron: watchdogCronPath,
-      },
+      planState: rebuilt.snapshot.planState,
+      documents,
     });
 
     console.log(
@@ -329,6 +341,21 @@ function main() {
     }
 
     console.log(JSON.stringify(intent, null, 2));
+    return;
+  }
+
+  if (command === 'emit-planner-request') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    const request = createPlannerRequest(rebuilt.snapshot);
+
+    if (typeof options.out === 'string') {
+      const outputPath = writeContractDocument(options.out, request);
+      console.log(JSON.stringify({ outputPath, requestedMode: request.requestedMode }, null, 2));
+      return;
+    }
+
+    console.log(JSON.stringify(request, null, 2));
     return;
   }
 

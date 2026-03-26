@@ -202,6 +202,40 @@ export function writeSnapshot(snapshotPath: string, snapshot: RunSnapshot): stri
   return resolvedPath;
 }
 
+function derivePlanState(snapshot: RunSnapshot): RunSnapshot['planState'] {
+  const milestoneCount = snapshot.milestones.length;
+  const completedMilestoneCount = snapshot.milestones.filter((milestone) => milestone.status === 'completed').length;
+  const pendingMilestoneCount = milestoneCount - completedMilestoneCount;
+
+  if (milestoneCount === 0) {
+    return {
+      status: 'needs-plan',
+      reason: 'The implementation plan does not contain any actionable milestones yet.',
+      milestoneCount,
+      completedMilestoneCount,
+      pendingMilestoneCount,
+    };
+  }
+
+  if (pendingMilestoneCount === 0) {
+    return {
+      status: 'completed',
+      reason: 'All implementation plan milestones are already completed.',
+      milestoneCount,
+      completedMilestoneCount,
+      pendingMilestoneCount,
+    };
+  }
+
+  return {
+    status: 'actionable',
+    reason: 'The implementation plan contains at least one incomplete milestone.',
+    milestoneCount,
+    completedMilestoneCount,
+    pendingMilestoneCount,
+  };
+}
+
 function deriveRunStatus(milestones: RunSnapshot['milestones']): RunSnapshot['status'] {
   if (milestones.every((milestone) => milestone.status === 'completed')) {
     return 'completed';
@@ -296,6 +330,7 @@ function applyEvent(snapshot: RunSnapshot & { eventCount: number; lastEventAt: s
   snapshot.eventCount += 1;
   snapshot.currentMilestoneId = deriveCurrentMilestoneId(snapshot.milestones);
   snapshot.status = deriveRunStatus(snapshot.milestones);
+  snapshot.planState = derivePlanState(snapshot);
 }
 
 export function materializeRunSnapshot(

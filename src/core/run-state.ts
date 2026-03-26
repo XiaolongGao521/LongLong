@@ -1,4 +1,38 @@
-import type { MilestonePlanEntry, RunSnapshot, WorkerRole } from './types.js';
+import type { MilestonePlanEntry, PlanState, RunSnapshot, WorkerRole } from './types.js';
+
+function derivePlanState(milestones: MilestonePlanEntry[]): PlanState {
+  const milestoneCount = milestones.length;
+  const completedMilestoneCount = milestones.filter((milestone) => milestone.completed).length;
+  const pendingMilestoneCount = milestoneCount - completedMilestoneCount;
+
+  if (milestoneCount === 0) {
+    return {
+      status: 'needs-plan',
+      reason: 'The implementation plan does not contain any actionable milestones yet.',
+      milestoneCount,
+      completedMilestoneCount,
+      pendingMilestoneCount,
+    };
+  }
+
+  if (pendingMilestoneCount === 0) {
+    return {
+      status: 'completed',
+      reason: 'All implementation plan milestones are already completed.',
+      milestoneCount,
+      completedMilestoneCount,
+      pendingMilestoneCount,
+    };
+  }
+
+  return {
+    status: 'actionable',
+    reason: 'The implementation plan contains at least one incomplete milestone.',
+    milestoneCount,
+    completedMilestoneCount,
+    pendingMilestoneCount,
+  };
+}
 
 export function createRunState({
   runId,
@@ -17,6 +51,7 @@ export function createRunState({
 }): RunSnapshot {
   const now = new Date().toISOString();
   const current = milestones.find((milestone) => !milestone.completed) ?? null;
+  const planState = derivePlanState(milestones);
 
   return {
     schemaVersion: 1,
@@ -24,7 +59,8 @@ export function createRunState({
     goal,
     repoPath,
     planPath,
-    status: current ? 'planned' : 'completed',
+    status: planState.status === 'completed' ? 'completed' : 'planned',
+    planState,
     createdAt: now,
     updatedAt: now,
     currentMilestoneId: current?.id ?? null,

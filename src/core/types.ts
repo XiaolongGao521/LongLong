@@ -70,6 +70,16 @@ export type VerificationRecord = {
   at: string;
 };
 
+export type PlanStateStatus = 'actionable' | 'needs-plan' | 'completed';
+
+export type PlanState = {
+  status: PlanStateStatus;
+  reason: string;
+  milestoneCount: number;
+  completedMilestoneCount: number;
+  pendingMilestoneCount: number;
+};
+
 export type RunSnapshot = {
   schemaVersion: number;
   runId: string;
@@ -77,6 +87,7 @@ export type RunSnapshot = {
   repoPath: string;
   planPath: string;
   status: MilestoneStatus | 'completed';
+  planState: PlanState;
   createdAt: string;
   updatedAt: string;
   currentMilestoneId: string | null;
@@ -121,6 +132,23 @@ export type HealthReport = {
   milestoneUpdatedAt: string | null;
   idleMinutes: number | null;
   recoveryRecommendation: RecoveryRecommendation;
+};
+
+export type PlannerRequest = {
+  schemaVersion: number;
+  kind: 'planner.request';
+  generatedAt: string;
+  runId: string;
+  goal: string;
+  repoPath: string;
+  planPath: string;
+  worker: WorkerLabel;
+  targetWorker: WorkerLabel;
+  requestedMode: 'plan' | 'replan';
+  triggerReason: string;
+  currentPlanState: PlanState & {
+    actionableMilestoneId: string | null;
+  };
 };
 
 export type PlannerIntent = {

@@ -1,35 +1,31 @@
 # IMPLEMENTATION_PLAN.md
 
-Goal: allow the Laizy supervisor process to choose model, reasoning mode, and thinking effort depending on task scope, then emit those runtime choices as part of the bounded machine-readable next-action bundle.
+Goal: add a dedicated planner subagent path so Laizy can invoke planning/replanning as a first-class supervised worker role instead of relying on manual plan reasoning in chat.
 
 ## Execution rules
-- This plan is the authoritative execution queue for the runtime-profile slice.
+- This plan is the authoritative execution queue for the planner-subagent slice.
 - Advance one highest-priority incomplete milestone at a time.
 - After each completed milestone: update this file, verify with `/usr/bin/node scripts/build-check.mjs`, commit exactly once, and push immediately.
-- Keep scope narrow and compatibility-safe; prefer extending existing supervisor/openclaw primitives over introducing a separate orchestration subsystem.
+- Keep scope narrow and compatibility-safe; extend existing supervisor/openclaw/runtime-profile primitives rather than inventing a separate orchestration subsystem.
 - The compiled CLI entrypoint is `dist/src/index.js`; the wrapper flow remains `start-run` once, then `supervisor-tick` for continuation.
 
-### [x] R1 - Add scope-aware runtime profile selection in supervisor logic
-- Add explicit runtime profile types covering at least model, thinking effort, and reasoning mode.
-- Teach the supervisor layer to classify the current next action (`continue`, `recover`, `verify`, `closeout`) and active milestone scope into a bounded runtime profile.
-- Keep the first heuristic version simple and deterministic.
-- Default reasoning visibility conservatively for shared/group-safe operation.
+### [x] P1 - Add first-class planner request artifacts and plan-needed bootstrap semantics
+- Add a machine-readable `planner.request` document type describing goal, repo, plan path, current plan state, requested mode (`plan` or `replan`), and trigger reason.
+- Teach run initialization / supervisor bootstrap to distinguish an empty-or-missing-actionable plan from a completed run so Laizy can request planning instead of closing out.
+- Keep the first version deterministic and compatible with the existing snapshot/event-log model.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Completed 2026-03-26: added explicit supervisor runtime-profile types plus deterministic action/scope classification with conservative hidden-reasoning defaults; verified via `/usr/bin/node scripts/build-check.mjs`.
+- Completed: added `planner.request`, preserved `needs-plan` bootstrap state for empty plans, and verified with `/usr/bin/node scripts/build-check.mjs`.
 
-### [x] R2 - Thread runtime profiles through emitted Laizy/OpenClaw artifacts
-- Attach the selected runtime profile to the supervisor decision bundle.
-- Thread model/thinking into emitted OpenClaw spawn adapters where applicable.
-- Carry reasoning mode as an explicit machine-readable field in the emitted runtime/adaptor documents, even where execution remains wrapper-mediated.
-- Keep continue/recover/verify bundles explicit about which worker/runtime profile should be used next.
+### [ ] P2 - Add `plan` / `replan` supervisor decisions and planner spawn adapters
+- Extend `supervisor-tick` to emit `plan` or `replan` decisions when the run lacks actionable milestones or when the current run state clearly requires plan repair.
+- Emit bounded planner bundles containing `planner.request` plus OpenClaw planner spawn adapters.
+- Thread runtime-profile selection into planner decisions so planning can use a stronger default profile than ordinary implementation when appropriate.
+- Keep existing `continue` / `recover` / `verify` / `closeout` behavior stable.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Completed 2026-03-26: supervisor decisions now emit runtime profiles, action entries inherit them, implementer/recovery spawn adapters carry model/thinking/reasoning metadata, and verification documents expose explicit runtime-profile data.
 
-### [x] R3 - Refresh README and verification coverage for runtime-profile-aware supervision
-- Update `README.md` to explain that `supervisor-tick` now chooses runtime profile as well as next action.
-- Document the intended operator contract around automatic model/thinking/reasoning selection and any conservative defaults.
-- Extend `scripts/build-check.mjs` to assert that the emitted bundles include the expected runtime profile data across representative supervisor decisions.
+### [ ] P3 - Refresh README and verification coverage for planner-driven runs
+- Update `README.md` to explain when `supervisor-tick` emits `plan` / `replan` and how a dedicated planner worker fits into the wrapper-driven operator flow.
+- Document the intended operator contract that supervisors should consume planner manifests/artifacts instead of improvising plan refreshes in chat.
+- Extend `scripts/build-check.mjs` to cover plan-needed bootstrap, replan triggers, planner bundle emission, and planner runtime-profile selection.
 - Record the final verification checkpoint and notable discoveries in this plan.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Completed 2026-03-26: README now explains runtime-profile-aware `supervisor-tick` operation and the conservative hidden-reasoning default; `scripts/build-check.mjs` asserts runtime profile presence across continue/recover/verify flows plus bundle/adaptor emission.
-- Notable discovery: milestone details often include a verification-checkpoint line, so scope classification must prioritize core runtime keywords ahead of generic verification keywords to avoid false `verification` classification during implementation milestones.
