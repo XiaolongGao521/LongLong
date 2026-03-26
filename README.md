@@ -24,7 +24,7 @@ This TypeScript-first bootstrap slice establishes the workflow contract and the 
   - initialize a run-state snapshot plus adjacent JSONL event log
   - transition milestone lifecycle state and rebuild the derived snapshot
   - select the next actionable milestone from durable run state
-  - emit planner-intent and implementer-contract JSON handoff documents
+  - emit planner-request, planner-intent, and implementer-contract JSON handoff documents
   - record worker heartbeats in the event log
   - inspect run health and emit machine-readable recovery recommendations
   - plan bounded recovery actions and persist recovery history in the run snapshot
@@ -89,11 +89,20 @@ By default it creates:
 - `state/runs/demo-run.events.jsonl` — the append-only event log
 - `state/runs/demo-run.bootstrap/bootstrap-manifest.json` — machine-readable bundle manifest
 - `state/runs/demo-run.bootstrap/planner-intent.json` — current planner handoff
-- `state/runs/demo-run.bootstrap/implementer-contract.json` — bounded implementer contract
-- `state/runs/demo-run.bootstrap/openclaw-implementer-spawn.json` — initial worker spawn adapter
 - `state/runs/demo-run.bootstrap/openclaw-watchdog-cron.json` — watchdog cron adapter
+- if the plan already has actionable milestones:
+  - `state/runs/demo-run.bootstrap/implementer-contract.json` — bounded implementer contract
+  - `state/runs/demo-run.bootstrap/openclaw-implementer-spawn.json` — initial worker spawn adapter
+- if the plan is empty or otherwise lacks actionable milestones:
+  - `state/runs/demo-run.bootstrap/planner-request.json` — machine-readable request for bounded planning
 
 The manifest is the stable document an external supervisor can consume to start the run without recomputing or manually stitching together the first-step artifacts.
+
+The important bootstrap distinction is:
+
+- an empty/no-actionable plan is **not** treated as a completed run
+- instead, the snapshot records `planState.status: "needs-plan"`
+- bootstrap emits a `planner.request` artifact so downstream supervisors can request planning deterministically
 
 Useful options:
 
@@ -115,6 +124,8 @@ node dist/src/index.js supervisor-tick \
 
 Depending on the current run state, the bundle will classify the next step as one of:
 
+- `plan` — request bounded planning when the run has no actionable milestones yet
+- `replan` — request bounded plan repair when the active milestone is explicitly blocked
 - `continue` — keep implementation moving with a fresh bounded implementer handoff
 - `recover` — hand off to recovery with a machine-readable restart/repair plan
 - `verify` — hand off the current milestone to verification/review
@@ -123,12 +134,14 @@ Depending on the current run state, the bundle will classify the next step as on
 Typical emitted artifacts include:
 
 - a stable supervisor manifest describing the decision
-- the decision-specific handoff document (`implementer`, `recovery`, `verification`, or `closeout`)
-- any OpenClaw adapter payloads needed for that next step
+- the decision-specific handoff document (`planner.request`, `implementer`, `recovery`, `verification`, or `closeout`)
+- any OpenClaw adapter payloads needed for that next step, including planner spawn adapters for `plan` / `replan`
 - explicit runtime-profile data in the decision and next-step documents so downstream tooling can see the intended `model`, `thinking`, and `reasoningMode`
 - closeout-specific watchdog disable guidance when the plan is complete
 
 The important contract is that the supervisor bundle becomes the source of truth for the next action. A chat-based watchdog or operator should read the manifest and execute the emitted bounded document, not improvise the next step from memory.
+
+For planner-driven runs specifically, operators should consume `planner.request` plus the emitted planner spawn adapter rather than asking a chat model to refresh the plan freehand. That keeps planning/replanning inside the same durable, machine-readable supervision loop as implementation and recovery.
 
 ### Low-level building blocks
 
@@ -167,6 +180,14 @@ node dist/src/index.js snapshot --snapshot state/runs/demo-run.json
 
 ```bash
 node dist/src/index.js select-milestone --snapshot state/runs/demo-run.json
+```
+
+### Emit a planner request
+
+```bash
+node dist/src/index.js emit-planner-request \
+  --snapshot state/runs/demo-run.json \
+  --out state/contracts/demo-planner-request.json
 ```
 
 ### Emit a planner intent

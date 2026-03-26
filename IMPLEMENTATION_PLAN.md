@@ -24,9 +24,11 @@ Goal: add a dedicated planner subagent path so Laizy can invoke planning/replann
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
 - Completed: supervisor now emits `plan`/`replan` decisions with planner bundles and planner spawn adapters, and planner runtime selection is high-thinking by default.
 
-### [ ] P3 - Refresh README and verification coverage for planner-driven runs
+### [x] P3 - Refresh README and verification coverage for planner-driven runs
 - Update `README.md` to explain when `supervisor-tick` emits `plan` / `replan` and how a dedicated planner worker fits into the wrapper-driven operator flow.
 - Document the intended operator contract that supervisors should consume planner manifests/artifacts instead of improvising plan refreshes in chat.
 - Extend `scripts/build-check.mjs` to cover plan-needed bootstrap, replan triggers, planner bundle emission, and planner runtime-profile selection.
 - Record the final verification checkpoint and notable discoveries in this plan.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
+- Completed: README now documents `planner.request`, `plan`/`replan` supervisor decisions, and the operator contract to consume emitted planner manifests instead of improvising replans in chat.
+- Final verification: `/usr/bin/node scripts/build-check.mjs` passed after planner bootstrap/replan coverage updates.
