@@ -249,6 +249,9 @@ assert(
   bootstrapManifest.planState.status === (planHasIncompleteMilestones ? 'actionable' : 'completed'),
   'expected bootstrap manifest to surface actionable plan state when work remains and completed plan state after full closeout',
 );
+const laizySkillSource = readFileSync('skills/laizy/SKILL.md', 'utf8');
+assert(laizySkillSource.includes('"bins":["laizy"]'), 'expected shipped skill metadata to advertise laizy as the only required binary');
+assert(laizySkillSource.includes('laizy start-run'), 'expected shipped skill guidance to keep the laizy CLI as the primary operator surface');
 assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path when the plan is not in needs-plan bootstrap mode');
 assert(bootstrapManifest.documents.laizyWatchdog, 'expected bootstrap manifest to include a local watchdog adapter path');
 assert(bootstrapManifest.documents.codexImplementerExec, 'expected bootstrap manifest to include a codex implementer adapter path');

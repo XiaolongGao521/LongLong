@@ -52,6 +52,17 @@ Current installer note:
 - **Stay deterministic between steps** — `start-run` and `supervisor-tick` emit bounded machine-readable artifacts for the next action.
 - **Recover instead of restarting from scratch** — watchdog and recovery flows are first-class parts of the delivery loop.
 
+## Supported execution and scheduling surfaces
+
+Laizy keeps one CLI surface — `laizy` — while emitting bounded artifacts for multiple execution/scheduling backends:
+
+- **OpenClaw** for chat/session spawning, steering, history inspection, and optional cron scheduling
+- **Codex CLI** for local non-OpenClaw worker execution
+- **Claude Code** for local non-OpenClaw worker execution
+- **`laizy watchdog`** for local periodic supervisor cadence when OpenClaw cron is not the scheduler you want
+
+OpenClaw cron remains a supported scheduler option, but it is not the only watchdog path.
+
 ## Quick start
 
 ```bash
@@ -124,7 +135,7 @@ node dist/src/index.js
 Bootstrap a run once:
 
 ```bash
-node dist/src/index.js start-run \
+laizy start-run \
   --goal "Turn a brief into a verified PR" \
   --plan examples/demo-implementation-plan.md \
   --out state/runs/demo-run.json
@@ -133,7 +144,7 @@ node dist/src/index.js start-run \
 Then continue deterministically from durable state with the supervisor wrapper:
 
 ```bash
-node dist/src/index.js supervisor-tick \
+laizy supervisor-tick \
   --snapshot state/runs/demo-run.json \
   --out-dir state/runs/demo-run.supervisor
 ```
@@ -225,7 +236,7 @@ For planner-driven runs specifically, operators should consume `planner.request`
 ### Local watchdog loop
 
 ```bash
-node dist/src/index.js watchdog \
+laizy watchdog \
   --snapshot state/runs/demo-run.json \
   --out-dir state/runs/demo-run.supervisor \
   --interval-seconds 300
@@ -235,8 +246,10 @@ Use `watchdog` when you want Laizy itself to own the periodic supervisor cadence
 
 ### Low-level building blocks
 
+The packaged CLI surface is always `laizy`. For local repository development, you can still invoke `node dist/src/index.js ...` directly after compiling, but operators and skill users should treat `laizy` as the stable binary surface.
+
 ```bash
-node dist/src/index.js init-run \
+laizy init-run \
   --goal "Turn a brief into a verified PR" \
   --plan examples/demo-implementation-plan.md \
   --out state/runs/demo-run.json
