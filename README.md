@@ -1,6 +1,8 @@
 # Laizy
 
-Laizy is a repo-native autonomous software delivery engine built around the exact Ralph-loop workflow already proven in SillyAvatar.
+Laizy is an open-source orchestration layer for people already using tools like Claude Code, Codex, and OpenClaw.
+
+Instead of replacing your coding agent with a hosted black-box platform, Laizy acts as the repo-native control plane around the tools you already trust. It turns them into a supervised software delivery loop with explicit planning, implementation, recovery, verification, and closeout artifacts.
 
 The npm package exposes a single CLI entrypoint:
 
@@ -22,7 +24,15 @@ Or use it without a global install:
 npx laizy --help
 ```
 
-## Usage
+## Why Laizy
+
+- **Bring your own agents** — use Claude Code, Codex, OpenClaw, and similar tools instead of being locked into one hosted platform.
+- **Keep state in the repo** — plans, run snapshots, event logs, contracts, and verification records are explicit files.
+- **Separate worker roles** — planner, implementer, recovery, verifier, and supervisor decisions are distinct instead of collapsing into one opaque prompt.
+- **Stay deterministic between steps** — `start-run` and `supervisor-tick` emit bounded machine-readable artifacts for the next action.
+- **Recover instead of restarting from scratch** — watchdog and recovery flows are first-class parts of the delivery loop.
+
+## Quick start
 
 ```bash
 laizy start-run \
@@ -30,6 +40,16 @@ laizy start-run \
   --plan IMPLEMENTATION_PLAN.md \
   --out state/runs/demo-run.json
 ```
+
+Then continue from durable state:
+
+```bash
+laizy supervisor-tick \
+  --snapshot state/runs/demo-run.json \
+  --out-dir state/runs/demo-run.supervisor
+```
+
+That flow is designed to:
 
 - plan first
 - implement one milestone at a time
@@ -39,9 +59,9 @@ laizy start-run \
 - keep a watchdog running
 - recover stalled work with a separate worker
 
-## Current scope
+## What Laizy does today
 
-This TypeScript-first bootstrap slice establishes the workflow contract and the first runnable core:
+Laizy is already usable as a TypeScript-first CLI and orchestration layer with:
 
 - repo-local `AGENTS.md` with the Laizy Ralph-loop operating model
 - `IMPLEMENTATION_PLAN.md` with milestone-based execution order

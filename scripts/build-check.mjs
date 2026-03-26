@@ -213,8 +213,11 @@ assert(
 );
 const bootstrapManifest = JSON.parse(readFileSync(startRunOutput.manifestPath, 'utf8'));
 assert(bootstrapManifest.kind === 'run.bootstrap', 'expected start-run to emit a bootstrap manifest');
-assert(bootstrapManifest.planState.status === 'actionable', 'expected bootstrap manifest to surface actionable plan state');
-assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path');
+assert(
+  bootstrapManifest.planState.status === (planHasIncompleteMilestones ? 'actionable' : 'completed'),
+  'expected bootstrap manifest to surface actionable plan state when work remains and completed plan state after full closeout',
+);
+assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path when the plan is not in needs-plan bootstrap mode');
 const bootstrapSpawnAdapter = JSON.parse(readFileSync(bootstrapManifest.documents.implementerSpawn, 'utf8'));
 assert(bootstrapSpawnAdapter.kind === 'openclaw.sessions_spawn', 'expected bootstrap bundle to include a machine-readable spawn adapter');
 assert(bootstrapSpawnAdapter.runtimeProfile?.thinking, 'expected bootstrap spawn adapter to include runtime-profile data');
