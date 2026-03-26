@@ -22,8 +22,8 @@ Goal: make Laizy publishable on npm and add Apache-2.0 licensing, using the Laiz
 - Kept the change set narrow and compatible with the existing local workflow by reusing the existing TypeScript compile command rather than broader packaging changes.
 - Verification checkpoint passed: `/usr/bin/node scripts/build-check.mjs`
 
-### [ ] P3 - Refresh README/publish docs and finish package verification
-- Update `README.md` with npm install/usage guidance, publish expectations, and the Apache-2.0 license notice for the packaged CLI.
-- Record the final package-readiness checks in-repo, including `npm pack --dry-run` and `/usr/bin/node scripts/build-check.mjs`, so closeout has an explicit done condition.
-- After docs and tarball contents are correct, capture the final verification note in this plan before marking the slice complete.
-- Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
+### [x] P3 - Refresh README/publish docs and finish package verification
+- Updated `README.md` with npm install/usage guidance, package publish/readiness expectations, and the Apache-2.0 notice for the packaged `laizy` CLI.
+- Recorded the final package-readiness checks in-repo: `/usr/bin/node scripts/build-check.mjs` passed and `/usr/bin/npm pack --dry-run` produced the expected tarball containing only the intended runtime/docs files.
+- Final verification note: the packaged CLI is publish-ready with `prepack` rebuilding `dist/` and the publish surface constrained to `dist/`, `README.md`, and `LICENSE`.
+- Verification checkpoint passed: `/usr/bin/node scripts/build-check.mjs`

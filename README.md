@@ -10,6 +10,27 @@ laizy
 
 That command resolves to the compiled runtime at `dist/src/index.js`.
 
+## Install
+
+```bash
+npm install -g laizy
+```
+
+Or use it without a global install:
+
+```bash
+npx laizy --help
+```
+
+## Usage
+
+```bash
+laizy start-run \
+  --goal "Turn a brief into a verified PR" \
+  --plan IMPLEMENTATION_PLAN.md \
+  --out state/runs/demo-run.json
+```
+
 - plan first
 - implement one milestone at a time
 - verify after every milestone
@@ -52,7 +73,9 @@ Laizy is not "one big autonomous prompt." It is a deterministic delivery loop wi
 
 ## CLI
 
-The published package ships the `laizy` binary, which resolves to the compiled CLI entrypoint:
+The published package ships the `laizy` binary. Inside the packaged artifact, it resolves to the compiled CLI entrypoint at `dist/src/index.js`.
+
+For local repository development, you can still invoke the built entrypoint directly:
 
 ```bash
 node dist/src/index.js
@@ -339,6 +362,23 @@ These scripts mirror the SillyAvatar process and target this repository explicit
 npm run ralph:plan
 npm run ralph:build
 ```
+
+## Publish/readiness notes
+
+The npm package is intended to publish only the compiled runtime and required package docs:
+
+- `dist/`
+- `README.md`
+- `LICENSE`
+
+Before publishing, run both readiness checks from a clean working tree:
+
+```bash
+/usr/bin/node scripts/build-check.mjs
+/usr/bin/npm pack --dry-run
+```
+
+`prepack` recompiles `dist/`, so the tarball can be produced without committing generated output.
 
 ## License
 
