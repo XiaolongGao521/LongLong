@@ -1,34 +1,29 @@
 # IMPLEMENTATION_PLAN.md
 
-Goal: add a dedicated planner subagent path so Laizy can invoke planning/replanning as a first-class supervised worker role instead of relying on manual plan reasoning in chat.
+Goal: make Laizy publishable on npm and add Apache-2.0 licensing, using the Laizy-native supervisor/planner flow rather than manual milestone authoring.
 
 ## Execution rules
-- This plan is the authoritative execution queue for the planner-subagent slice.
+- This plan is the authoritative execution queue for the npm-publishable + Apache-2.0 slice.
 - Advance one highest-priority incomplete milestone at a time.
 - After each completed milestone: update this file, verify with `/usr/bin/node scripts/build-check.mjs`, commit exactly once, and push immediately.
-- Keep scope narrow and compatibility-safe; extend existing supervisor/openclaw/runtime-profile primitives rather than inventing a separate orchestration subsystem.
-- The compiled CLI entrypoint is `dist/src/index.js`; the wrapper flow remains `start-run` once, then `supervisor-tick` for continuation.
+- Keep scope narrow and compatibility-safe; prefer publishable-package wiring over broad product changes.
+- The compiled CLI entrypoint is `dist/src/index.js`; use `start-run` and `supervisor-tick` to drive the run.
+- Treat `npm pack --dry-run` plus `/usr/bin/node scripts/build-check.mjs` as the packaging-readiness gates for this slice.
 
-### [x] P1 - Add first-class planner request artifacts and plan-needed bootstrap semantics
-- Add a machine-readable `planner.request` document type describing goal, repo, plan path, current plan state, requested mode (`plan` or `replan`), and trigger reason.
-- Teach run initialization / supervisor bootstrap to distinguish an empty-or-missing-actionable plan from a completed run so Laizy can request planning instead of closing out.
-- Keep the first version deterministic and compatible with the existing snapshot/event-log model.
+### [ ] P1 - Add npm-ready package metadata and Apache-2.0 licensing
+- Update `package.json` from repo-private development metadata to publish-ready npm metadata, including `license`, repository links, package entrypoints, and a minimal publish surface definition.
+- Add an Apache-2.0 `LICENSE` file and align package/docs wording with the final package identity and supported CLI entrypoint.
+- Keep the published artifact small and explicit: only compiled runtime assets and required package docs should ship, not repo-only planning/state files.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Completed: added `planner.request`, preserved `needs-plan` bootstrap state for empty plans, and verified with `/usr/bin/node scripts/build-check.mjs`.
 
-### [x] P2 - Add `plan` / `replan` supervisor decisions and planner spawn adapters
-- Extend `supervisor-tick` to emit `plan` or `replan` decisions when the run lacks actionable milestones or when the current run state clearly requires plan repair.
-- Emit bounded planner bundles containing `planner.request` plus OpenClaw planner spawn adapters.
-- Thread runtime-profile selection into planner decisions so planning can use a stronger default profile than ordinary implementation when appropriate.
-- Keep existing `continue` / `recover` / `verify` / `closeout` behavior stable.
+### [ ] P2 - Make the package packable from a clean checkout
+- Wire the package scripts and packaging controls so `npm pack --dry-run` can succeed from a fresh clone without depending on committed `dist/` output.
+- Validate that the tarball includes the compiled CLI/runtime entrypoint and excludes development-only paths such as local run state, source-control noise, and other repo-internal artifacts.
+- Prefer the smallest compatible change set (`files`, `.npmignore`, `prepack`/`prepare`, or related package wiring) that preserves the current local developer workflow.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Completed: supervisor now emits `plan`/`replan` decisions with planner bundles and planner spawn adapters, and planner runtime selection is high-thinking by default.
 
-### [x] P3 - Refresh README and verification coverage for planner-driven runs
-- Update `README.md` to explain when `supervisor-tick` emits `plan` / `replan` and how a dedicated planner worker fits into the wrapper-driven operator flow.
-- Document the intended operator contract that supervisors should consume planner manifests/artifacts instead of improvising plan refreshes in chat.
-- Extend `scripts/build-check.mjs` to cover plan-needed bootstrap, replan triggers, planner bundle emission, and planner runtime-profile selection.
-- Record the final verification checkpoint and notable discoveries in this plan.
+### [ ] P3 - Refresh README/publish docs and finish package verification
+- Update `README.md` with npm install/usage guidance, publish expectations, and the Apache-2.0 license notice for the packaged CLI.
+- Record the final package-readiness checks in-repo, including `npm pack --dry-run` and `/usr/bin/node scripts/build-check.mjs`, so closeout has an explicit done condition.
+- After docs and tarball contents are correct, capture the final verification note in this plan before marking the slice complete.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
-- Completed: README now documents `planner.request`, `plan`/`replan` supervisor decisions, and the operator contract to consume emitted planner manifests instead of improvising replans in chat.
-- Final verification: `/usr/bin/node scripts/build-check.mjs` passed after planner bootstrap/replan coverage updates.
