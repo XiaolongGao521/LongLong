@@ -74,17 +74,30 @@ export function createSupervisorDecision(
   }
 
   if (snapshot.status === 'completed') {
-    actions.push({
-      id: 'disable-watchdog',
-      kind: 'openclaw.cron',
-      title: 'Disable the watchdog cron for the completed run',
-      worker: snapshot.workers.watchdog,
-      requiresExternalExecution: true,
-      documentPath: null,
-      documentKind: 'openclaw.cron',
-      summary: 'The run is complete; disable the watchdog cadence and stop supervisory nudges.',
-      runtimeProfile: null,
-    });
+    actions.push(
+      {
+        id: 'disable-watchdog-cron',
+        kind: 'openclaw.cron',
+        title: 'Disable the OpenClaw watchdog cron for the completed run',
+        worker: snapshot.workers.watchdog,
+        requiresExternalExecution: true,
+        documentPath: null,
+        documentKind: 'openclaw.cron',
+        summary: 'The run is complete; disable the OpenClaw watchdog cadence and stop supervisory nudges.',
+        runtimeProfile: null,
+      },
+      {
+        id: 'disable-laizy-watchdog',
+        kind: 'laizy.watchdog',
+        title: 'Disable the local laizy watchdog loop for the completed run',
+        worker: snapshot.workers.watchdog,
+        requiresExternalExecution: true,
+        documentPath: null,
+        documentKind: 'laizy.watchdog',
+        summary: 'If a local laizy watchdog loop is running, stop it as part of run closeout.',
+        runtimeProfile: null,
+      },
+    );
 
     return buildDecision('closeout', 'All milestones are completed; only run closeout remains.');
   }
@@ -305,7 +318,11 @@ export function writeSupervisorBundle(
     documents.disableLaizyWatchdog = disableLaizyWatchdogPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
-      documentPath: action.kind === 'openclaw.cron' ? disableWatchdogPath : action.documentPath,
+      documentPath: action.kind === 'openclaw.cron'
+        ? disableWatchdogPath
+        : action.kind === 'laizy.watchdog'
+          ? disableLaizyWatchdogPath
+          : action.documentPath,
     }));
   }
 

@@ -490,6 +490,10 @@ if (completed.snapshot.status === 'completed') {
   const closeoutBundle = writeSupervisorBundle(path.join(tempDir, 'supervisor', 'closeout'), completed.snapshot);
   assert(closeoutBundle.documents.disableWatchdog, 'expected closeout bundle to include a watchdog disable adapter');
   assert(closeoutBundle.documents.disableLaizyWatchdog, 'expected closeout bundle to include a local watchdog disable adapter');
+  const disableWatchdogAction = closeoutBundle.decision.actions.find((action) => action.kind === 'openclaw.cron');
+  const disableLaizyWatchdogAction = closeoutBundle.decision.actions.find((action) => action.kind === 'laizy.watchdog');
+  assert(disableWatchdogAction?.documentPath === closeoutBundle.documents.disableWatchdog, 'expected closeout decision to surface the OpenClaw watchdog disable document');
+  assert(disableLaizyWatchdogAction?.documentPath === closeoutBundle.documents.disableLaizyWatchdog, 'expected closeout decision to surface the local watchdog disable document');
   const disableWatchdogAdapter = JSON.parse(readFileSync(closeoutBundle.documents.disableWatchdog, 'utf8'));
   const disableLaizyWatchdogAdapter = JSON.parse(readFileSync(closeoutBundle.documents.disableLaizyWatchdog, 'utf8'));
   assert(disableWatchdogAdapter.payload.mode === 'disable', 'expected closeout adapter to disable the watchdog cron');
