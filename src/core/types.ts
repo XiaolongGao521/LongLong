@@ -195,6 +195,7 @@ export type SupervisorAction = {
   documentPath: string | null;
   documentKind: string | null;
   summary: string;
+  runtimeProfile: SupervisorRuntimeProfile | null;
 };
 
 export type SupervisorDecisionName = 'continue' | 'recover' | 'verify' | 'closeout';
@@ -221,6 +222,7 @@ export type SupervisorDecision = {
   runStatus: string;
   activeMilestoneId: string | null;
   decision: SupervisorDecisionName;
+  runtimeProfile: SupervisorRuntimeProfile;
   reason: string;
   actions: SupervisorAction[];
 };

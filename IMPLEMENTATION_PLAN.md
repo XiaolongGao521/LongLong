@@ -17,12 +17,13 @@ Goal: allow the Laizy supervisor process to choose model, reasoning mode, and th
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
 - Completed 2026-03-26: added explicit supervisor runtime-profile types plus deterministic action/scope classification with conservative hidden-reasoning defaults; verified via `/usr/bin/node scripts/build-check.mjs`.
 
-### [ ] R2 - Thread runtime profiles through emitted Laizy/OpenClaw artifacts
+### [x] R2 - Thread runtime profiles through emitted Laizy/OpenClaw artifacts
 - Attach the selected runtime profile to the supervisor decision bundle.
 - Thread model/thinking into emitted OpenClaw spawn adapters where applicable.
 - Carry reasoning mode as an explicit machine-readable field in the emitted runtime/adaptor documents, even where execution remains wrapper-mediated.
 - Keep continue/recover/verify bundles explicit about which worker/runtime profile should be used next.
 - Verification checkpoint: `/usr/bin/node scripts/build-check.mjs`
+- Completed 2026-03-26: supervisor decisions now emit runtime profiles, action entries inherit them, implementer/recovery spawn adapters carry model/thinking/reasoning metadata, and verification documents expose explicit runtime-profile data.
 
 ### [ ] R3 - Refresh README and verification coverage for runtime-profile-aware supervision
 - Update `README.md` to explain that `supervisor-tick` now chooses runtime profile as well as next action.

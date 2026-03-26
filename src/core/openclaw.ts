@@ -4,8 +4,9 @@ import path from 'node:path';
 import { createImplementerContract } from './contracts.js';
 import { evaluateRunHealth } from './health.js';
 import { createRecoveryPlan } from './recovery.js';
+import { selectSupervisorRuntimeProfile } from './runtime-profile.js';
 
-import type { RunSnapshot, WorkerRole } from './types.js';
+import type { RunSnapshot, SupervisorDecisionName, WorkerRole } from './types.js';
 
 const VALID_ADAPTER_WORKERS = new Set<WorkerRole>([
   'planner',
@@ -34,15 +35,29 @@ function resolveMilestone(snapshot: RunSnapshot, milestoneId: string | null = sn
   return snapshot.milestones.find((milestone) => milestone.id === milestoneId) ?? null;
 }
 
+function inferDecisionName(workerRole: WorkerRole): SupervisorDecisionName {
+  if (workerRole === 'recovery') {
+    return 'recover';
+  }
+
+  if (workerRole === 'verifier') {
+    return 'verify';
+  }
+
+  return 'continue';
+}
+
 function createAdapterEnvelope({
   operation,
   snapshot,
   worker,
+  runtimeProfile,
   payload,
 }: {
   operation: string;
   snapshot: RunSnapshot;
   worker: ReturnType<typeof resolveWorker>;
+  runtimeProfile?: ReturnType<typeof selectSupervisorRuntimeProfile> | null;
   payload: Record<string, unknown>;
 }) {
   return {
@@ -55,6 +70,7 @@ function createAdapterEnvelope({
     snapshotPath: snapshot.snapshotPath ?? null,
     eventLogPath: snapshot.eventLogPath ?? null,
     worker,
+    runtimeProfile: runtimeProfile ?? null,
     payload,
   };
 }
@@ -66,6 +82,8 @@ export function createSessionSpawnAdapter(
   const worker = resolveWorker(snapshot, options.worker ?? 'implementer');
   const milestone = resolveMilestone(snapshot, options.milestoneId ?? null);
   const runtime = options.runtime ?? 'subagent';
+  const decision = inferDecisionName(worker.role);
+  const runtimeProfile = selectSupervisorRuntimeProfile(snapshot, decision, milestone);
   const contract = worker.role === 'implementer'
     ? createImplementerContract(snapshot, milestone)
     : null;
@@ -77,6 +95,7 @@ export function createSessionSpawnAdapter(
     operation: 'sessions_spawn',
     snapshot,
     worker,
+    runtimeProfile,
     payload: {
       adapter: 'sessions_spawn',
       sessionLabel: worker.label,
@@ -84,10 +103,14 @@ export function createSessionSpawnAdapter(
       cwd: snapshot.repoPath,
       milestoneId: milestone?.id ?? null,
       promptDocument: contract ?? recoveryPlan,
+      runtimeProfile,
       metadata: {
         stableWorkerLabel: true,
         repoPath: snapshot.repoPath,
         planPath: snapshot.planPath,
+        model: runtimeProfile.model,
+        thinking: runtimeProfile.thinking,
+        reasoningMode: runtimeProfile.reasoningMode,
       },
     },
   });

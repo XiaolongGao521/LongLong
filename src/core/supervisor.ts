@@ -29,7 +29,7 @@ export function createSupervisorDecision(
   const actions: SupervisorAction[] = [];
 
   const buildDecision = (decision: SupervisorDecisionName, reason: string): SupervisorDecision => {
-    void selectSupervisorRuntimeProfile(snapshot, decision, activeMilestone);
+    const runtimeProfile = selectSupervisorRuntimeProfile(snapshot, decision, activeMilestone);
 
     return {
       schemaVersion: 1,
@@ -42,8 +42,12 @@ export function createSupervisorDecision(
       runStatus: snapshot.status,
       activeMilestoneId: decision === 'closeout' ? null : activeMilestone?.id ?? null,
       decision,
+      runtimeProfile,
       reason,
-      actions,
+      actions: actions.map((action) => ({
+        ...action,
+        runtimeProfile: action.runtimeProfile ?? runtimeProfile,
+      })),
     };
   };
 
@@ -57,6 +61,7 @@ export function createSupervisorDecision(
       documentPath: null,
       documentKind: 'openclaw.cron',
       summary: 'The run is complete; disable the watchdog cadence and stop supervisory nudges.',
+      runtimeProfile: null,
     });
 
     return buildDecision('closeout', 'All milestones are completed; only run closeout remains.');
@@ -72,6 +77,7 @@ export function createSupervisorDecision(
       documentPath: null,
       documentKind: 'recovery.plan',
       summary: healthReport.recoveryRecommendation.reason,
+      runtimeProfile: null,
     });
 
     return buildDecision('recover', healthReport.recoveryRecommendation.reason);
@@ -87,6 +93,7 @@ export function createSupervisorDecision(
       documentPath: null,
       documentKind: 'verification.command',
       summary: `Run verification for milestone ${activeMilestone?.id ?? 'unknown'} before completion.`,
+      runtimeProfile: null,
     });
 
     return buildDecision('verify', 'The active milestone is in verifying state and needs an explicit verification result.');
@@ -103,6 +110,7 @@ export function createSupervisorDecision(
     summary: snapshot.status === 'planned'
       ? `Start milestone ${activeMilestone?.id ?? 'unknown'} with a bounded implementer contract.`
       : `Continue milestone ${activeMilestone?.id ?? 'unknown'} without widening scope.`,
+    runtimeProfile: null,
   });
 
   return buildDecision(

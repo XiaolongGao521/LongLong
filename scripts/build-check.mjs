@@ -152,6 +152,8 @@ const spawnAdapter = createSessionSpawnAdapter(initialized.snapshot, { worker: '
 assert(spawnAdapter.kind === 'openclaw.sessions_spawn', 'expected spawn adapter document kind');
 assert(spawnAdapter.payload.sessionLabel === 'laizy-implementer', 'expected implementer spawn adapter to use stable label');
 assert(spawnAdapter.payload.promptDocument?.kind === 'implementer.contract', 'expected implementer spawn adapter to embed the implementer contract');
+assert(spawnAdapter.runtimeProfile?.model === 'openai-codex/gpt-5.4', 'expected spawn adapter to carry a runtime profile');
+assert(spawnAdapter.payload.runtimeProfile?.reasoningMode === 'hidden', 'expected spawn payload to carry conservative reasoning mode');
 
 const sendAdapter = createSessionSendAdapter(initialized.snapshot, {
   worker: 'implementer',
@@ -202,6 +204,7 @@ assert(bootstrapManifest.kind === 'run.bootstrap', 'expected start-run to emit a
 assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path');
 const bootstrapSpawnAdapter = JSON.parse(readFileSync(bootstrapManifest.documents.implementerSpawn, 'utf8'));
 assert(bootstrapSpawnAdapter.kind === 'openclaw.sessions_spawn', 'expected bootstrap bundle to include a machine-readable spawn adapter');
+assert(bootstrapSpawnAdapter.runtimeProfile?.thinking, 'expected bootstrap spawn adapter to include runtime-profile data');
 
 const supervisorCliResult = run(process.execPath, [
   'dist/src/index.js',
@@ -226,9 +229,16 @@ const continueDecision = createSupervisorDecision(initialized.snapshot);
 assert(continueDecision.kind === 'supervisor.decision', 'expected supervisor decision document kind');
 assert(continueDecision.decision === 'continue', 'expected a fresh planned run to continue into implementer work');
 const continueRuntimeProfile = selectSupervisorRuntimeProfile(initialized.snapshot, continueDecision.decision);
+assert(continueDecision.runtimeProfile.reasoningMode === 'hidden', 'expected supervisor decision to expose conservative hidden reasoning');
 assert(continueRuntimeProfile.reasoningMode === 'hidden', 'expected continue runtime profile to default to hidden reasoning');
-assert(continueRuntimeProfile.scope === 'core-runtime', 'expected runtime-profile classifier to treat the active runtime-profile milestone as core-runtime work');
-assert(continueRuntimeProfile.thinking === 'high', 'expected core-runtime continue work to request high thinking');
+const syntheticCoreRuntimeMilestone = {
+  ...initialized.snapshot.milestones[0],
+  title: 'Refine supervisor runtime adapter selection',
+  details: ['Thread runtime profile data through worker contracts and adapters'],
+};
+assert(classifyMilestoneScope(syntheticCoreRuntimeMilestone) === 'core-runtime', 'expected classifier to detect core-runtime scope');
+assert(selectSupervisorRuntimeProfile(initialized.snapshot, 'continue', syntheticCoreRuntimeMilestone).thinking === 'high', 'expected core-runtime continue work to request high thinking');
+assert(continueDecision.actions[0]?.runtimeProfile?.model === continueDecision.runtimeProfile.model, 'expected continue action to carry the same runtime profile as the decision');
 assert(classifyMilestoneScope({
   ...initialized.snapshot.milestones[0],
   title: 'Update README for operators',
@@ -292,6 +302,8 @@ const recoveryBundle = writeSupervisorBundle(path.join(tempDir, 'supervisor', 'r
   stallThresholdMinutes: 15,
 });
 assert(recoveryBundle.documents.recoveryPlan, 'expected recovery bundle to include a recovery plan');
+const persistedRecoverySpawn = JSON.parse(readFileSync(recoveryBundle.documents.recoverySpawn, 'utf8'));
+assert(persistedRecoverySpawn.runtimeProfile?.thinking === 'high', 'expected recovery spawn adapter to include a high-thinking runtime profile');
 
 const recoveryPlanPath = writeRecoveryPlan(path.join(tempDir, 'recovery', 'plan.json'), recoveryPlan);
 const persistedRecoveryPlan = JSON.parse(readFileSync(recoveryPlanPath, 'utf8'));
@@ -335,10 +347,13 @@ const verifyDecision = createSupervisorDecision(verifying.snapshot, {
   verificationCommand: '/usr/bin/node scripts/build-check.mjs',
 });
 assert(verifyDecision.decision === 'verify', 'expected verifying supervisor decision to request verification');
+assert(verifyDecision.runtimeProfile.reasoningMode === 'hidden', 'expected verify decision to expose hidden reasoning by default');
 const verifyBundle = writeSupervisorBundle(path.join(tempDir, 'supervisor', 'verify'), verifying.snapshot, {
   verificationCommand: '/usr/bin/node scripts/build-check.mjs',
 });
 assert(verifyBundle.documents.verificationCommand, 'expected verify bundle to include a verification command');
+const persistedVerifyCommand = JSON.parse(readFileSync(verifyBundle.documents.verificationCommand, 'utf8'));
+assert(persistedVerifyCommand.runtimeProfile?.reasoningMode === 'hidden', 'expected verification command document to include runtime-profile data');
 
 let completionBlocked = false;
 try {

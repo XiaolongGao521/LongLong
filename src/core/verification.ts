@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { selectSupervisorRuntimeProfile } from './runtime-profile.js';
+
 import type { ReviewerOutput, RunSnapshot, SnapshotMilestone, VerificationStatus } from './types.js';
 
 function clone<T>(value: T): T {
@@ -22,6 +24,7 @@ export function createVerificationCommand(
   options: { milestoneId?: string; command?: string; stage?: string } = {},
 ) {
   const milestone = findMilestone(snapshot, options.milestoneId ?? snapshot.currentMilestoneId!);
+  const runtimeProfile = selectSupervisorRuntimeProfile(snapshot, 'verify', milestone);
 
   return {
     schemaVersion: 1,
@@ -31,6 +34,7 @@ export function createVerificationCommand(
     repoPath: snapshot.repoPath,
     planPath: snapshot.planPath,
     worker: snapshot.workers.verifier,
+    runtimeProfile,
     milestone: {
       id: milestone.id,
       title: milestone.title,
