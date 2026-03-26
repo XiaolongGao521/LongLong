@@ -37,7 +37,7 @@ That skill is designed for people already using Claude Code, Codex, OpenClaw, an
 Package the skill locally with OpenClaw's `package_skill.py` helper, or publish it later with ClawHub:
 
 ```bash
-clawhub publish ./skills/laizy --slug laizy --name "Laizy" --version 0.1.0 --changelog "Initial ClawHub release"
+clawhub publish ./skills/laizy --slug laizy --name "Laizy" --version 0.2.0 --changelog "Initial ClawHub release"
 ```
 
 Current installer note:
