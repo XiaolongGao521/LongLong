@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import {
+  assertHealthyBackendCheck,
   createBackendCheckResult,
   writeBackendCheckResult,
 } from './backend-preflight.js';
@@ -17,7 +18,14 @@ import { createRecoveryPlan, writeRecoveryPlan } from './recovery.js';
 import { selectSupervisorRuntimeProfile } from './runtime-profile.js';
 import { createVerificationCommand, writeVerificationDocument } from './verification.js';
 
-import type { RunSnapshot, SupervisorAction, SupervisorDecision, SupervisorDecisionName } from './types.js';
+import type {
+  BackendCheckResultDocument,
+  RunSnapshot,
+  SupervisorAction,
+  SupervisorDecision,
+  SupervisorDecisionName,
+  WorkerRole,
+} from './types.js';
 
 function sanitizeSegment(value: string | null | undefined, fallback: string): string {
   return (value ?? fallback).replace(/[^a-z0-9._-]+/giu, '-').replace(/^-+|-+$/gu, '') || fallback;
@@ -25,6 +33,50 @@ function sanitizeSegment(value: string | null | undefined, fallback: string): st
 
 function bundleBaseName(snapshot: RunSnapshot): string {
   return sanitizeSegment(snapshot.currentMilestoneId ?? snapshot.runId, 'run');
+}
+
+function requiredPreflightRole(decision: SupervisorDecisionName): WorkerRole | null {
+  if (decision === 'plan' || decision === 'replan') {
+    return 'planner';
+  }
+
+  if (decision === 'continue') {
+    return 'implementer';
+  }
+
+  if (decision === 'recover') {
+    return 'recovery';
+  }
+
+  if (decision === 'verify') {
+    return 'verifier';
+  }
+
+  return null;
+}
+
+function writeDecisionBackendCheck(
+  resolvedOutputDir: string,
+  baseName: string,
+  snapshot: RunSnapshot,
+  role: WorkerRole,
+): { document: BackendCheckResultDocument; path: string } {
+  const document = createBackendCheckResult(snapshot, role);
+  const outputPath = writeBackendCheckResult(
+    path.join(resolvedOutputDir, `${baseName}.${role}.backend-check.json`),
+    {
+      ...document,
+      outputPath: path.join(resolvedOutputDir, `${baseName}.${role}.backend-check.json`),
+    },
+  );
+
+  return {
+    document: {
+      ...document,
+      outputPath,
+    },
+    path: outputPath,
+  };
 }
 
 export function createSupervisorDecision(
@@ -185,6 +237,18 @@ export function writeSupervisorBundle(
   const decision = createSupervisorDecision(snapshot, options);
   const baseName = bundleBaseName(snapshot);
   const documents: Record<string, string> = {};
+  const preflightRole = requiredPreflightRole(decision.decision);
+  let preflightCheck: BackendCheckResultDocument | null = null;
+
+  if (preflightRole) {
+    const writtenPreflight = writeDecisionBackendCheck(resolvedOutputDir, baseName, snapshot, preflightRole);
+    preflightCheck = writtenPreflight.document;
+    const documentKey = `${preflightRole}BackendCheck`;
+    documents[documentKey] = writtenPreflight.path;
+    assertHealthyBackendCheck(writtenPreflight.document, {
+      context: `supervisor-tick cannot emit ${decision.decision} adapters`,
+    });
+  }
 
   if (decision.decision === 'plan' || decision.decision === 'replan') {
     const plannerRequest = createPlannerRequest(snapshot, {
@@ -194,25 +258,32 @@ export function writeSupervisorBundle(
     const plannerRequestPath = writeContractDocument(path.join(resolvedOutputDir, `${baseName}.planner-request.json`), plannerRequest);
     const plannerSpawnPath = writeOpenClawAdapter(
       path.join(resolvedOutputDir, `${baseName}.planner-spawn.json`),
-      createSessionSpawnAdapter(snapshot, { worker: 'planner', runtimeProfile: decision.runtimeProfile }),
+      createSessionSpawnAdapter(snapshot, {
+        worker: 'planner',
+        runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
+      }),
     );
     const codexPlannerExecPath = writeBackendAdapter(
       path.join(resolvedOutputDir, `${baseName}.codex-cli-planner-exec.json`),
-      createCodexCliExecAdapter(snapshot, { worker: 'planner', runtimeProfile: decision.runtimeProfile }),
+      createCodexCliExecAdapter(snapshot, {
+        worker: 'planner',
+        runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
+      }),
     );
     const claudePlannerExecPath = writeBackendAdapter(
       path.join(resolvedOutputDir, `${baseName}.claude-code-planner-exec.json`),
-      createClaudeCodeExecAdapter(snapshot, { worker: 'planner', runtimeProfile: decision.runtimeProfile }),
-    );
-    const plannerBackendCheckPath = writeBackendCheckResult(
-      path.join(resolvedOutputDir, `${baseName}.planner.backend-check.json`),
-      createBackendCheckResult(snapshot, 'planner'),
+      createClaudeCodeExecAdapter(snapshot, {
+        worker: 'planner',
+        runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
+      }),
     );
     documents.plannerRequest = plannerRequestPath;
     documents.plannerSpawn = plannerSpawnPath;
     documents.codexPlannerExec = codexPlannerExecPath;
     documents.claudePlannerExec = claudePlannerExecPath;
-    documents.plannerBackendCheck = plannerBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'planner.request' ? plannerRequestPath : action.documentPath,
@@ -224,25 +295,32 @@ export function writeSupervisorBundle(
     const contractPath = writeContractDocument(path.join(resolvedOutputDir, `${baseName}.implementer-contract.json`), contract);
     const spawnPath = writeOpenClawAdapter(
       path.join(resolvedOutputDir, `${baseName}.implementer-spawn.json`),
-      createSessionSpawnAdapter(snapshot, { worker: 'implementer', runtimeProfile: decision.runtimeProfile }),
+      createSessionSpawnAdapter(snapshot, {
+        worker: 'implementer',
+        runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
+      }),
     );
     const codexExecPath = writeBackendAdapter(
       path.join(resolvedOutputDir, `${baseName}.codex-cli-implementer-exec.json`),
-      createCodexCliExecAdapter(snapshot, { worker: 'implementer', runtimeProfile: decision.runtimeProfile }),
+      createCodexCliExecAdapter(snapshot, {
+        worker: 'implementer',
+        runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
+      }),
     );
     const claudeExecPath = writeBackendAdapter(
       path.join(resolvedOutputDir, `${baseName}.claude-code-implementer-exec.json`),
-      createClaudeCodeExecAdapter(snapshot, { worker: 'implementer', runtimeProfile: decision.runtimeProfile }),
-    );
-    const implementerBackendCheckPath = writeBackendCheckResult(
-      path.join(resolvedOutputDir, `${baseName}.implementer.backend-check.json`),
-      createBackendCheckResult(snapshot, 'implementer'),
+      createClaudeCodeExecAdapter(snapshot, {
+        worker: 'implementer',
+        runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
+      }),
     );
     documents.implementerContract = contractPath;
     documents.implementerSpawn = spawnPath;
     documents.codexImplementerExec = codexExecPath;
     documents.claudeImplementerExec = claudeExecPath;
-    documents.implementerBackendCheck = implementerBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'implementer.contract' ? contractPath : action.documentPath,
@@ -261,6 +339,7 @@ export function writeSupervisorBundle(
         worker: 'recovery',
         healthOptions: { stallThresholdMinutes: options.stallThresholdMinutes },
         runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
       }),
     );
     const codexRecoveryExecPath = writeBackendAdapter(
@@ -269,6 +348,7 @@ export function writeSupervisorBundle(
         worker: 'recovery',
         healthOptions: { now: options.now, stallThresholdMinutes: options.stallThresholdMinutes },
         runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
       }),
     );
     const claudeRecoveryExecPath = writeBackendAdapter(
@@ -277,17 +357,13 @@ export function writeSupervisorBundle(
         worker: 'recovery',
         healthOptions: { now: options.now, stallThresholdMinutes: options.stallThresholdMinutes },
         runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
       }),
-    );
-    const recoveryBackendCheckPath = writeBackendCheckResult(
-      path.join(resolvedOutputDir, `${baseName}.recovery.backend-check.json`),
-      createBackendCheckResult(snapshot, 'recovery'),
     );
     documents.recoveryPlan = recoveryPlanPath;
     documents.recoverySpawn = recoverySpawnPath;
     documents.codexRecoveryExec = codexRecoveryExecPath;
     documents.claudeRecoveryExec = claudeRecoveryExecPath;
-    documents.recoveryBackendCheck = recoveryBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'recovery.plan' ? recoveryPlanPath : action.documentPath,
@@ -304,20 +380,23 @@ export function writeSupervisorBundle(
     );
     const codexVerifierExecPath = writeBackendAdapter(
       path.join(resolvedOutputDir, `${baseName}.codex-cli-verifier-exec.json`),
-      createCodexCliExecAdapter(snapshot, { worker: 'verifier', runtimeProfile: decision.runtimeProfile }),
+      createCodexCliExecAdapter(snapshot, {
+        worker: 'verifier',
+        runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
+      }),
     );
     const claudeVerifierExecPath = writeBackendAdapter(
       path.join(resolvedOutputDir, `${baseName}.claude-code-verifier-exec.json`),
-      createClaudeCodeExecAdapter(snapshot, { worker: 'verifier', runtimeProfile: decision.runtimeProfile }),
-    );
-    const verifierBackendCheckPath = writeBackendCheckResult(
-      path.join(resolvedOutputDir, `${baseName}.verifier.backend-check.json`),
-      createBackendCheckResult(snapshot, 'verifier'),
+      createClaudeCodeExecAdapter(snapshot, {
+        worker: 'verifier',
+        runtimeProfile: decision.runtimeProfile,
+        backendCheck: preflightCheck ?? undefined,
+      }),
     );
     documents.verificationCommand = verificationCommandPath;
     documents.codexVerifierExec = codexVerifierExecPath;
     documents.claudeVerifierExec = claudeVerifierExecPath;
-    documents.verifierBackendCheck = verifierBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'verification.command' ? verificationCommandPath : action.documentPath,

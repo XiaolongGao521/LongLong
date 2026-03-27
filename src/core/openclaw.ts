@@ -10,7 +10,7 @@ import { evaluateRunHealth } from './health.js';
 import { createRecoveryPlan } from './recovery.js';
 import { selectSupervisorRuntimeProfile } from './runtime-profile.js';
 
-import type { RunSnapshot, SupervisorDecisionName, WorkerRole } from './types.js';
+import type { BackendCheckResultDocument, RunSnapshot, SupervisorDecisionName, WorkerRole } from './types.js';
 
 const VALID_ADAPTER_WORKERS = new Set<WorkerRole>([
   'planner',
@@ -91,6 +91,7 @@ export function createSessionSpawnAdapter(
     runtime?: string;
     healthOptions?: { now?: string; stallThresholdMinutes?: number };
     runtimeProfile?: ReturnType<typeof selectSupervisorRuntimeProfile>;
+    backendCheck?: BackendCheckResultDocument;
   } = {},
 ) {
   const worker = resolveWorker(snapshot, options.worker ?? 'implementer');
@@ -99,7 +100,7 @@ export function createSessionSpawnAdapter(
   const decision = inferDecisionName(snapshot, worker.role);
   const runtimeProfile = options.runtimeProfile ?? selectSupervisorRuntimeProfile(snapshot, decision, milestone);
   const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
-  const backendCheck = createBackendCheckResult(snapshot, worker.role);
+  const backendCheck = options.backendCheck ?? createBackendCheckResult(snapshot, worker.role);
   const contract = worker.role === 'implementer'
     ? createImplementerContract(snapshot, milestone)
     : null;
@@ -195,13 +196,14 @@ export function createCronAdapter(
     prompt?: string;
     jobLabel?: string;
     mode?: 'ensure' | 'disable';
+    backendCheck?: BackendCheckResultDocument;
   } = {},
 ) {
   const worker = resolveWorker(snapshot, options.worker ?? 'watchdog');
   const mode = options.mode ?? 'ensure';
   const schedule = options.schedule ?? '*/5 * * * *';
   const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
-  const backendCheck = createBackendCheckResult(snapshot, worker.role);
+  const backendCheck = options.backendCheck ?? createBackendCheckResult(snapshot, worker.role);
   const prompt = options.prompt
     ?? `Inspect ${snapshot.workers.implementer} for milestone progress or stalls in ${path.basename(snapshot.repoPath)}.`;
 

@@ -11,7 +11,14 @@ import { createRecoveryPlan } from './recovery.js';
 import { selectSupervisorRuntimeProfile } from './runtime-profile.js';
 import { createVerificationCommand } from './verification.js';
 
-import type { RunSnapshot, SnapshotMilestone, SupervisorDecisionName, SupervisorRuntimeProfile, WorkerRole } from './types.js';
+import type {
+  BackendCheckResultDocument,
+  RunSnapshot,
+  SnapshotMilestone,
+  SupervisorDecisionName,
+  SupervisorRuntimeProfile,
+  WorkerRole,
+} from './types.js';
 
 const VALID_BACKEND_WORKERS = new Set<WorkerRole>([
   'planner',
@@ -189,6 +196,7 @@ export function createCodexCliExecAdapter(
     milestoneId?: string;
     healthOptions?: { now?: string; stallThresholdMinutes?: number };
     runtimeProfile?: SupervisorRuntimeProfile;
+    backendCheck?: BackendCheckResultDocument;
   } = {},
 ) {
   const worker = resolveWorker(snapshot, options.worker ?? 'implementer');
@@ -199,7 +207,7 @@ export function createCodexCliExecAdapter(
   const promptText = stringifyPromptDocument(promptDocument, worker, runtimeProfile);
   const capabilities = RUNTIME_CAPABILITIES['codex-cli'];
   const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
-  const backendCheck = createBackendCheckResult(snapshot, worker.role);
+  const backendCheck = options.backendCheck ?? createBackendCheckResult(snapshot, worker.role);
 
   return createCliExecutionEnvelope({
     operation: 'codex-cli.exec',
@@ -239,6 +247,7 @@ export function createClaudeCodeExecAdapter(
     milestoneId?: string;
     healthOptions?: { now?: string; stallThresholdMinutes?: number };
     runtimeProfile?: SupervisorRuntimeProfile;
+    backendCheck?: BackendCheckResultDocument;
   } = {},
 ) {
   const worker = resolveWorker(snapshot, options.worker ?? 'implementer');
@@ -249,7 +258,7 @@ export function createClaudeCodeExecAdapter(
   const promptText = stringifyPromptDocument(promptDocument, worker, runtimeProfile);
   const capabilities = RUNTIME_CAPABILITIES['claude-code'];
   const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
-  const backendCheck = createBackendCheckResult(snapshot, worker.role);
+  const backendCheck = options.backendCheck ?? createBackendCheckResult(snapshot, worker.role);
 
   return createCliExecutionEnvelope({
     operation: 'claude-code.exec',
@@ -290,6 +299,7 @@ export function createLaizyWatchdogAdapter(
     stallThresholdMinutes?: number;
     verificationCommand?: string;
     mode?: 'ensure' | 'disable';
+    backendCheck?: BackendCheckResultDocument;
   } = {},
 ) {
   const resolvedOutDir = path.resolve(
@@ -298,7 +308,7 @@ export function createLaizyWatchdogAdapter(
   );
   const intervalSeconds = Number(options.intervalSeconds ?? 300);
   const backendConfiguration = resolveBackendConfiguration(snapshot).watchdog;
-  const backendCheck = createBackendCheckResult(snapshot, 'watchdog');
+  const backendCheck = options.backendCheck ?? createBackendCheckResult(snapshot, 'watchdog');
 
   return {
     schemaVersion: 1,

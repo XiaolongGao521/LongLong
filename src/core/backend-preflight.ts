@@ -8,6 +8,7 @@ import type {
   BackendHealthProbe,
   BackendKind,
   RunSnapshot,
+  WorkerBackendConfig,
   WorkerRole,
 } from './types.js';
 
@@ -21,12 +22,72 @@ const DEFAULT_SUPPORTED_BACKENDS: Record<WorkerRole, BackendKind[]> = {
 
 const backendCheckCache = new Map<string, BackendCheckResultDocument>();
 
+type BackendConfigurationOverride = Partial<Record<WorkerRole, BackendKind | Partial<WorkerBackendConfig>>>;
+
 function defaultBackendKindForRole(role: WorkerRole): BackendKind {
   return role === 'watchdog' ? 'laizy-watchdog' : 'openclaw';
 }
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function assertBackendKind(role: WorkerRole, backend: string): asserts backend is BackendKind {
+  if (!DEFAULT_SUPPORTED_BACKENDS[role].includes(backend as BackendKind)) {
+    throw new Error(`Unsupported backend ${backend} for role ${role}. Supported backends: ${DEFAULT_SUPPORTED_BACKENDS[role].join(', ')}`);
+  }
+}
+
+function normalizeWorkerBackendConfig(
+  role: WorkerRole,
+  input: BackendKind | Partial<WorkerBackendConfig> | undefined,
+  baseConfig: WorkerBackendConfig,
+): WorkerBackendConfig {
+  if (!input) {
+    return clone(baseConfig);
+  }
+
+  if (typeof input === 'string') {
+    assertBackendKind(role, input);
+    return {
+      ...clone(baseConfig),
+      role,
+      backend: input,
+      supportedBackends: [...DEFAULT_SUPPORTED_BACKENDS[role]],
+    } satisfies WorkerBackendConfig;
+  }
+
+  const backend = typeof input.backend === 'string' ? input.backend : baseConfig.backend;
+  assertBackendKind(role, backend);
+  const supportedBackends = Array.isArray(input.supportedBackends) && input.supportedBackends.length > 0
+    ? input.supportedBackends
+    : baseConfig.supportedBackends;
+
+  for (const supportedBackend of supportedBackends) {
+    assertBackendKind(role, supportedBackend);
+  }
+
+  return {
+    role,
+    backend,
+    supportedBackends: [...supportedBackends],
+    preferredRuntime: typeof input.preferredRuntime === 'string' || input.preferredRuntime === null
+      ? input.preferredRuntime
+      : baseConfig.preferredRuntime,
+  } satisfies WorkerBackendConfig;
+}
+
+export function mergeBackendConfiguration(
+  baseConfiguration: BackendConfiguration,
+  overrides: BackendConfigurationOverride = {},
+): BackendConfiguration {
+  return {
+    planner: normalizeWorkerBackendConfig('planner', overrides.planner, baseConfiguration.planner),
+    implementer: normalizeWorkerBackendConfig('implementer', overrides.implementer, baseConfiguration.implementer),
+    recovery: normalizeWorkerBackendConfig('recovery', overrides.recovery, baseConfiguration.recovery),
+    verifier: normalizeWorkerBackendConfig('verifier', overrides.verifier, baseConfiguration.verifier),
+    watchdog: normalizeWorkerBackendConfig('watchdog', overrides.watchdog, baseConfiguration.watchdog),
+  } satisfies BackendConfiguration;
 }
 
 export function createDefaultBackendConfiguration(): BackendConfiguration {
@@ -64,8 +125,12 @@ export function createDefaultBackendConfiguration(): BackendConfiguration {
   };
 }
 
-export function resolveBackendConfiguration(snapshot: RunSnapshot): BackendConfiguration {
-  return snapshot.backends ?? createDefaultBackendConfiguration();
+export function resolveBackendConfiguration(
+  snapshot: Pick<RunSnapshot, 'backends'>,
+  overrides: BackendConfigurationOverride = {},
+): BackendConfiguration {
+  const baseConfiguration = snapshot.backends ?? createDefaultBackendConfiguration();
+  return mergeBackendConfiguration(baseConfiguration, overrides);
 }
 
 function createProbe(name: BackendHealthProbe['name'], status: BackendHealthProbe['status'], detail: string, command: string | null) {
@@ -255,6 +320,29 @@ export function createBackendCheckResult(
 
   backendCheckCache.set(cacheKey, clone({ ...document, outputPath: null }));
   return document;
+}
+
+export function summarizeBackendCheckFailures(document: BackendCheckResultDocument): string {
+  const failedProbes = document.probes.filter((probe) => probe.status === 'failed');
+
+  if (failedProbes.length === 0) {
+    return `${document.worker.role} backend ${document.backend.backend} is healthy.`;
+  }
+
+  return failedProbes
+    .map((probe) => `${probe.name}: ${probe.detail}`)
+    .join(' | ');
+}
+
+export function assertHealthyBackendCheck(document: BackendCheckResultDocument, options: { context?: string } = {}): BackendCheckResultDocument {
+  if (document.overallStatus === 'healthy') {
+    return document;
+  }
+
+  const context = options.context ? `${options.context}: ` : '';
+  throw new Error(
+    `${context}configured ${document.worker.role} backend ${document.backend.backend} failed preflight (${document.outputPath ?? 'no output path'}). ${summarizeBackendCheckFailures(document)}`,
+  );
 }
 
 export function writeBackendCheckResult(outputPath: string, document: BackendCheckResultDocument): string {

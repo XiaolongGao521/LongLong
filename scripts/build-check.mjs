@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -14,6 +14,7 @@ function run(command, args) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
     encoding: 'utf8',
+    env: process.env,
   });
 
   if (result.status !== 0) {
@@ -23,9 +24,32 @@ function run(command, args) {
   return result;
 }
 
+function runExpectFailure(command, args) {
+  const result = spawnSync(command, args, {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: process.env,
+  });
+
+  assert(result.status !== 0, `expected ${command} ${args.join(' ')} to fail`);
+  return result;
+}
+
 function importBuiltModule(relativePath) {
   const absolutePath = path.resolve(relativePath);
   return import(pathToFileURL(absolutePath).href);
+}
+
+function writeExecutable(filePath, content) {
+  writeFileSync(filePath, content, 'utf8');
+  chmodSync(filePath, 0o755);
+}
+
+function defaultBootstrapDir(snapshotPath) {
+  const resolvedSnapshotPath = path.resolve(snapshotPath);
+  return resolvedSnapshotPath.endsWith('.json')
+    ? resolvedSnapshotPath.replace(/\.json$/u, '.bootstrap')
+    : `${resolvedSnapshotPath}.bootstrap`;
 }
 
 run('/usr/bin/env', ['bash', '-lc', 'rm -rf dist && /usr/bin/npx tsc -p tsconfig.json']);
@@ -127,6 +151,61 @@ const targetMilestoneId = nextMilestoneId ?? plan.milestones.at(-1)?.id ?? null;
 assert(targetMilestoneId, 'expected demo implementation plan to contain at least one milestone');
 
 const tempDir = mkdtempSync(path.join(os.tmpdir(), 'laizy-build-'));
+const fakeBinDir = path.join(tempDir, 'fake-bin');
+const degradedBinDir = path.join(tempDir, 'fake-bin-no-codex');
+run('/usr/bin/env', ['bash', '-lc', `mkdir -p ${JSON.stringify(fakeBinDir)} ${JSON.stringify(degradedBinDir)}`]);
+const openClawStub = `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1-}" == "help" ]]; then
+  echo "openclaw help"
+  exit 0
+fi
+if [[ "\${1-}" == "gateway" && "\${2-}" == "status" ]]; then
+  echo "gateway running"
+  exit 0
+fi
+exit 0
+`;
+const codexStub = `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1-}" == "--help" ]]; then
+  echo "codex help"
+  exit 0
+fi
+if [[ "\${1-}" == "exec" && "\${2-}" == "--help" ]]; then
+  echo "codex exec help"
+  exit 0
+fi
+exit 0
+`;
+const claudeStub = `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1-}" == "--help" ]]; then
+  echo "claude help"
+  exit 0
+fi
+if [[ "\${1-}" == "--version" ]]; then
+  echo "claude 1.0.0"
+  exit 0
+fi
+exit 0
+`;
+const laizyStub = `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1-}" == "help" ]]; then
+  echo "laizy help"
+  exit 0
+fi
+exit 0
+`;
+writeExecutable(path.join(fakeBinDir, 'openclaw'), openClawStub);
+writeExecutable(path.join(fakeBinDir, 'codex'), codexStub);
+writeExecutable(path.join(fakeBinDir, 'claude'), claudeStub);
+writeExecutable(path.join(fakeBinDir, 'laizy'), laizyStub);
+writeExecutable(path.join(degradedBinDir, 'openclaw'), openClawStub);
+writeExecutable(path.join(degradedBinDir, 'claude'), claudeStub);
+writeExecutable(path.join(degradedBinDir, 'laizy'), laizyStub);
+process.env.PATH = `${fakeBinDir}:${process.env.PATH}`;
 const snapshotPath = path.join(tempDir, 'run.json');
 
 const syntheticMilestones = plan.milestones.map((milestone) => ({
@@ -305,6 +384,53 @@ assert(bootstrapSpawnAdapter.runtimeProfile?.thinking, 'expected bootstrap spawn
 const bootstrapWatchdogAdapter = JSON.parse(readFileSync(bootstrapManifest.documents.laizyWatchdog, 'utf8'));
 assert(bootstrapWatchdogAdapter.kind === 'laizy.watchdog', 'expected bootstrap manifest to include a local watchdog adapter');
 assert(bootstrapWatchdogAdapter.payload.args[0] === 'watchdog', 'expected bootstrap local watchdog to use the watchdog subcommand');
+const bootstrapImplementerBackendCheck = JSON.parse(readFileSync(bootstrapManifest.documents.implementerBackendCheck, 'utf8'));
+assert(bootstrapImplementerBackendCheck.outputPath === bootstrapManifest.documents.implementerBackendCheck, 'expected bootstrap implementer backend check to record its output path');
+const bootstrapCodexImplementerExec = JSON.parse(readFileSync(bootstrapManifest.documents.codexImplementerExec, 'utf8'));
+assert(
+  bootstrapCodexImplementerExec.payload.backendCheck.outputPath === bootstrapManifest.documents.implementerBackendCheck,
+  'expected bootstrap implementer adapters to embed the exact written backend preflight result',
+);
+const unhealthyBackendConfigPath = path.join(tempDir, 'unhealthy-backend-config.json');
+writeFileSync(unhealthyBackendConfigPath, JSON.stringify({ implementer: 'codex-cli' }, null, 2));
+const originalPath = process.env.PATH;
+process.env.PATH = `${degradedBinDir}${path.delimiter}/usr/bin${path.delimiter}/bin`;
+const failingBootstrapSnapshotPath = path.join(tempDir, 'failing-bootstrap.json');
+const failingBootstrapResult = runExpectFailure(process.execPath, [
+  'dist/src/index.js',
+  'start-run',
+  '--goal',
+  'Fail fast when the configured implementer backend is unavailable',
+  '--plan',
+  'examples/demo-implementation-plan.md',
+  '--out',
+  failingBootstrapSnapshotPath,
+  '--run-id',
+  'build-check-unhealthy-bootstrap',
+  '--backend-config',
+  unhealthyBackendConfigPath,
+]);
+process.env.PATH = originalPath;
+assert(failingBootstrapResult.stderr.includes('start-run cannot emit implementer adapters'), 'expected start-run preflight failure to explain why adapter emission was blocked');
+assert(failingBootstrapResult.stderr.includes('codex-cli failed preflight'), 'expected start-run preflight failure to name the unhealthy backend');
+const failingBootstrapCheckPath = path.join(defaultBootstrapDir(failingBootstrapSnapshotPath), 'implementer.backend-check.json');
+const failingBootstrapCheck = JSON.parse(readFileSync(failingBootstrapCheckPath, 'utf8'));
+assert(failingBootstrapCheck.overallStatus === 'unhealthy', 'expected start-run preflight failure to still write an unhealthy backend check artifact');
+process.env.PATH = `${degradedBinDir}${path.delimiter}/usr/bin${path.delimiter}/bin`;
+const failingSupervisorResult = runExpectFailure(process.execPath, [
+  'dist/src/index.js',
+  'supervisor-tick',
+  '--snapshot',
+  cliBootstrapSnapshotPath,
+  '--out-dir',
+  path.join(tempDir, 'supervisor-unhealthy'),
+  '--backend-config',
+  unhealthyBackendConfigPath,
+]);
+process.env.PATH = originalPath;
+assert(failingSupervisorResult.stderr.includes('supervisor-tick cannot emit continue adapters'), 'expected supervisor-tick preflight failure to explain why continuation was blocked');
+const failingSupervisorCheck = JSON.parse(readFileSync(path.join(tempDir, 'supervisor-unhealthy', `${targetMilestoneId}.implementer.backend-check.json`), 'utf8'));
+assert(failingSupervisorCheck.overallStatus === 'unhealthy', 'expected supervisor-tick preflight failure to persist the unhealthy backend check artifact');
 const watchdogCliResult = run(process.execPath, [
   'dist/src/index.js',
   'watchdog',

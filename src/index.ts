@@ -46,7 +46,10 @@ import {
   writeBackendAdapter,
 } from './core/backends.js';
 import {
+  assertHealthyBackendCheck,
   createBackendCheckResult,
+  createDefaultBackendConfiguration,
+  mergeBackendConfiguration,
   writeBackendCheckResult,
 } from './core/backend-preflight.js';
 import { createRunState } from './core/run-state.js';
@@ -65,9 +68,9 @@ function printHelp() {
 Usage:
   node dist/src/index.js next --plan <path>
   node dist/src/index.js summary --plan <path>
-  node dist/src/index.js init-run --goal <text> --plan <path> --out <snapshot-path> [--run-id <id>]
-  node dist/src/index.js start-run --goal <text> --plan <path> --out <snapshot-path> [--run-id <id>] [--bundle-dir <dir>] [--runtime <value>] [--schedule <cron>] [--prompt <text>]
-  node dist/src/index.js watchdog --snapshot <snapshot-path> [--out-dir <dir>] [--interval-seconds <n>] [--stall-threshold-minutes <n>] [--verification-command <text>] [--once]
+  node dist/src/index.js init-run --goal <text> --plan <path> --out <snapshot-path> [--run-id <id>] [--backend-config <json-or-path>]
+  node dist/src/index.js start-run --goal <text> --plan <path> --out <snapshot-path> [--run-id <id>] [--bundle-dir <dir>] [--runtime <value>] [--schedule <cron>] [--prompt <text>] [--backend-config <json-or-path>]
+  node dist/src/index.js watchdog --snapshot <snapshot-path> [--out-dir <dir>] [--interval-seconds <n>] [--stall-threshold-minutes <n>] [--verification-command <text>] [--backend-config <json-or-path>] [--once]
   node dist/src/index.js transition --snapshot <snapshot-path> --milestone <id> --status <status> [--note <text>]
   node dist/src/index.js snapshot --snapshot <snapshot-path>
   node dist/src/index.js select-milestone --snapshot <snapshot-path>
@@ -77,7 +80,7 @@ Usage:
   node dist/src/index.js heartbeat --snapshot <snapshot-path> --worker <worker-name> [--note <text>]
   node dist/src/index.js inspect-health --snapshot <snapshot-path> [--stall-threshold-minutes <n>] [--now <iso>] [--out <report-path>]
   node dist/src/index.js plan-recovery --snapshot <snapshot-path> [--stall-threshold-minutes <n>] [--now <iso>] [--out <plan-path>]
-  node dist/src/index.js supervisor-tick --snapshot <snapshot-path> [--out-dir <dir>] [--stall-threshold-minutes <n>] [--verification-command <text>]
+  node dist/src/index.js supervisor-tick --snapshot <snapshot-path> [--out-dir <dir>] [--stall-threshold-minutes <n>] [--verification-command <text>] [--backend-config <json-or-path>]
   node dist/src/index.js record-recovery-action --snapshot <snapshot-path> --action <action> --reason <text> --worker <worker-name> [--milestone <id>] [--note <text>] [--source <value>]
   node dist/src/index.js emit-openclaw-spawn --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] [--milestone <id>] [--runtime <value>] [--out <path>]
   node dist/src/index.js emit-openclaw-send --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] --message <text> [--mode <append|replace>] [--out <path>]
@@ -126,6 +129,44 @@ function requireOption(options: CliOptions, key: string): string {
     throw new Error(`Missing required option --${key}`);
   }
   return String(value);
+}
+
+function parseJsonOption(value: string): unknown {
+  const trimmed = value.trim();
+  const source = trimmed.startsWith('{') ? trimmed : readFileSync(path.resolve(trimmed), 'utf8');
+  return JSON.parse(source);
+}
+
+function resolveBackendConfigurationOption(options: CliOptions, currentBackends = createDefaultBackendConfiguration()) {
+  if (typeof options['backend-config'] !== 'string') {
+    return currentBackends;
+  }
+
+  return mergeBackendConfiguration(currentBackends, parseJsonOption(options['backend-config']) as never);
+}
+
+function applyBackendConfigurationOption<T extends { backends: ReturnType<typeof createDefaultBackendConfiguration> }>(
+  snapshot: T,
+  options: CliOptions,
+): T {
+  return {
+    ...snapshot,
+    backends: resolveBackendConfigurationOption(options, snapshot.backends),
+  };
+}
+
+function writeCheckedBackendDocument(
+  snapshot: Parameters<typeof createBackendCheckResult>[0],
+  role: WorkerRole,
+  outputPath: string,
+  context: string,
+) {
+  const document = createBackendCheckResult(snapshot, role, { outputPath });
+  const writtenOutputPath = writeBackendCheckResult(outputPath, document);
+  return assertHealthyBackendCheck({
+    ...document,
+    outputPath: writtenOutputPath,
+  }, { context });
 }
 
 function defaultRunId() {
@@ -186,12 +227,14 @@ async function main() {
     const runId = typeof options['run-id'] === 'string' ? options['run-id'] : defaultRunId();
 
     const { milestones, path: resolvedPlanPath } = loadImplementationPlan(planPath);
+    const backends = resolveBackendConfigurationOption(options);
     const runState = createRunState({
       runId,
       goal,
       repoPath: process.cwd(),
       planPath: resolvedPlanPath,
       milestones,
+      backends,
     });
 
     const initialized = initializeRunArtifacts(snapshotPath, runState);
@@ -214,18 +257,26 @@ async function main() {
     }
 
     const rebuilt = rebuildSnapshot(initialized.snapshotPath);
+    const snapshot = applyBackendConfigurationOption(rebuilt.snapshot, options);
     const bundleDir = typeof options['bundle-dir'] === 'string'
       ? path.resolve(options['bundle-dir'])
       : defaultBootstrapDir(initialized.snapshotPath);
-    const plannerIntent = createPlannerIntent(rebuilt.snapshot);
+    const plannerIntent = createPlannerIntent(snapshot);
     const plannerIntentPath = writeContractDocument(path.join(bundleDir, 'planner-intent.json'), plannerIntent);
-    const watchdogCron = createCronAdapter(rebuilt.snapshot, {
+    const watchdogBackendCheck = writeCheckedBackendDocument(
+      snapshot,
+      'watchdog',
+      path.join(bundleDir, 'watchdog.backend-check.json'),
+      'start-run cannot emit watchdog adapters',
+    );
+    const watchdogCron = createCronAdapter(snapshot, {
       worker: 'watchdog',
       schedule: typeof options.schedule === 'string' ? options.schedule : undefined,
       prompt: typeof options.prompt === 'string' ? options.prompt : undefined,
+      backendCheck: watchdogBackendCheck,
     });
     const watchdogCronPath = writeOpenClawAdapter(path.join(bundleDir, 'openclaw-watchdog-cron.json'), watchdogCron);
-    const laizyWatchdog = createLaizyWatchdogAdapter(rebuilt.snapshot, {
+    const laizyWatchdog = createLaizyWatchdogAdapter(snapshot, {
       outDir: typeof options['supervisor-dir'] === 'string'
         ? options['supervisor-dir']
         : path.join(path.dirname(rebuilt.snapshotPath), `${path.basename(rebuilt.snapshotPath, '.json')}.supervisor`),
@@ -233,38 +284,50 @@ async function main() {
       stallThresholdMinutes: typeof options['stall-threshold-minutes'] === 'string' ? Number(options['stall-threshold-minutes']) : undefined,
       verificationCommand: typeof options['verification-command'] === 'string' ? options['verification-command'] : undefined,
       mode: 'ensure',
+      backendCheck: watchdogBackendCheck,
     });
     const laizyWatchdogPath = writeBackendAdapter(path.join(bundleDir, 'laizy-watchdog.json'), laizyWatchdog);
-    const watchdogBackendCheckPath = writeBackendCheckResult(
-      path.join(bundleDir, 'watchdog.backend-check.json'),
-      createBackendCheckResult(rebuilt.snapshot, 'watchdog'),
-    );
     const documents: Record<string, string> = {
       plannerIntent: plannerIntentPath,
       watchdogCron: watchdogCronPath,
       laizyWatchdog: laizyWatchdogPath,
-      watchdogBackendCheck: watchdogBackendCheckPath,
+      watchdogBackendCheck: watchdogBackendCheck.outputPath ?? path.join(bundleDir, 'watchdog.backend-check.json'),
     };
 
-    if (rebuilt.snapshot.planState.status === 'needs-plan') {
-      const plannerRuntimeProfile = selectSupervisorRuntimeProfile(rebuilt.snapshot, 'plan');
-      const plannerRequest = createPlannerRequest(rebuilt.snapshot);
+    if (snapshot.planState.status === 'needs-plan') {
+      const plannerRuntimeProfile = selectSupervisorRuntimeProfile(snapshot, 'plan');
+      const plannerBackendCheck = createBackendCheckResult(snapshot, 'planner', {
+        outputPath: path.join(bundleDir, 'planner.backend-check.json'),
+      });
+      const plannerBackendCheckPath = writeBackendCheckResult(plannerBackendCheck.outputPath ?? path.join(bundleDir, 'planner.backend-check.json'), plannerBackendCheck);
+      const plannerRequest = createPlannerRequest(snapshot);
+      assertHealthyBackendCheck({ ...plannerBackendCheck, outputPath: plannerBackendCheckPath }, {
+        context: 'start-run cannot emit planner adapters',
+      });
       const plannerRequestPath = writeContractDocument(path.join(bundleDir, 'planner-request.json'), plannerRequest);
       const openClawPlannerSpawnPath = writeOpenClawAdapter(
         path.join(bundleDir, 'openclaw-planner-spawn.json'),
-        createSessionSpawnAdapter(rebuilt.snapshot, { worker: 'planner', runtimeProfile: plannerRuntimeProfile }),
+        createSessionSpawnAdapter(snapshot, {
+          worker: 'planner',
+          runtimeProfile: plannerRuntimeProfile,
+          backendCheck: { ...plannerBackendCheck, outputPath: plannerBackendCheckPath },
+        }),
       );
       const codexPlannerExecPath = writeBackendAdapter(
         path.join(bundleDir, 'codex-cli-planner-exec.json'),
-        createCodexCliExecAdapter(rebuilt.snapshot, { worker: 'planner', runtimeProfile: plannerRuntimeProfile }),
+        createCodexCliExecAdapter(snapshot, {
+          worker: 'planner',
+          runtimeProfile: plannerRuntimeProfile,
+          backendCheck: { ...plannerBackendCheck, outputPath: plannerBackendCheckPath },
+        }),
       );
       const claudePlannerExecPath = writeBackendAdapter(
         path.join(bundleDir, 'claude-code-planner-exec.json'),
-        createClaudeCodeExecAdapter(rebuilt.snapshot, { worker: 'planner', runtimeProfile: plannerRuntimeProfile }),
-      );
-      const plannerBackendCheckPath = writeBackendCheckResult(
-        path.join(bundleDir, 'planner.backend-check.json'),
-        createBackendCheckResult(rebuilt.snapshot, 'planner'),
+        createClaudeCodeExecAdapter(snapshot, {
+          worker: 'planner',
+          runtimeProfile: plannerRuntimeProfile,
+          backendCheck: { ...plannerBackendCheck, outputPath: plannerBackendCheckPath },
+        }),
       );
       documents.plannerRequest = plannerRequestPath;
       documents.openClawPlannerSpawn = openClawPlannerSpawnPath;
@@ -272,26 +335,41 @@ async function main() {
       documents.claudePlannerExec = claudePlannerExecPath;
       documents.plannerBackendCheck = plannerBackendCheckPath;
     } else {
-      const implementerRuntimeProfile = selectSupervisorRuntimeProfile(rebuilt.snapshot, 'continue');
-      const implementerContract = createImplementerContract(rebuilt.snapshot);
-      const implementerSpawn = createSessionSpawnAdapter(rebuilt.snapshot, {
+      const implementerRuntimeProfile = selectSupervisorRuntimeProfile(snapshot, 'continue');
+      const implementerBackendCheck = createBackendCheckResult(snapshot, 'implementer', {
+        outputPath: path.join(bundleDir, 'implementer.backend-check.json'),
+      });
+      const implementerBackendCheckPath = writeBackendCheckResult(
+        implementerBackendCheck.outputPath ?? path.join(bundleDir, 'implementer.backend-check.json'),
+        implementerBackendCheck,
+      );
+      const implementerContract = createImplementerContract(snapshot);
+      assertHealthyBackendCheck({ ...implementerBackendCheck, outputPath: implementerBackendCheckPath }, {
+        context: 'start-run cannot emit implementer adapters',
+      });
+      const implementerSpawn = createSessionSpawnAdapter(snapshot, {
         worker: 'implementer',
         runtime: typeof options.runtime === 'string' ? options.runtime : undefined,
         runtimeProfile: implementerRuntimeProfile,
+        backendCheck: { ...implementerBackendCheck, outputPath: implementerBackendCheckPath },
       });
       const implementerContractPath = writeContractDocument(path.join(bundleDir, 'implementer-contract.json'), implementerContract);
       const implementerSpawnPath = writeOpenClawAdapter(path.join(bundleDir, 'openclaw-implementer-spawn.json'), implementerSpawn);
       const codexImplementerExecPath = writeBackendAdapter(
         path.join(bundleDir, 'codex-cli-implementer-exec.json'),
-        createCodexCliExecAdapter(rebuilt.snapshot, { worker: 'implementer', runtimeProfile: implementerRuntimeProfile }),
+        createCodexCliExecAdapter(snapshot, {
+          worker: 'implementer',
+          runtimeProfile: implementerRuntimeProfile,
+          backendCheck: { ...implementerBackendCheck, outputPath: implementerBackendCheckPath },
+        }),
       );
       const claudeImplementerExecPath = writeBackendAdapter(
         path.join(bundleDir, 'claude-code-implementer-exec.json'),
-        createClaudeCodeExecAdapter(rebuilt.snapshot, { worker: 'implementer', runtimeProfile: implementerRuntimeProfile }),
-      );
-      const implementerBackendCheckPath = writeBackendCheckResult(
-        path.join(bundleDir, 'implementer.backend-check.json'),
-        createBackendCheckResult(rebuilt.snapshot, 'implementer'),
+        createClaudeCodeExecAdapter(snapshot, {
+          worker: 'implementer',
+          runtimeProfile: implementerRuntimeProfile,
+          backendCheck: { ...implementerBackendCheck, outputPath: implementerBackendCheckPath },
+        }),
       );
       documents.implementerContract = implementerContractPath;
       documents.implementerSpawn = implementerSpawnPath;
@@ -306,14 +384,14 @@ async function main() {
       generatedAt: new Date().toISOString(),
       runId,
       goal,
-      repoPath: rebuilt.snapshot.repoPath,
-      planPath: rebuilt.snapshot.planPath,
+      repoPath: snapshot.repoPath,
+      planPath: snapshot.planPath,
       snapshotPath: rebuilt.snapshotPath,
       eventLogPath: rebuilt.eventLogPath,
-      currentMilestoneId: rebuilt.snapshot.currentMilestoneId,
+      currentMilestoneId: snapshot.currentMilestoneId,
       bundleDir,
-      planState: rebuilt.snapshot.planState,
-      backends: rebuilt.snapshot.backends,
+      planState: snapshot.planState,
+      backends: snapshot.backends,
       documents,
     });
 
@@ -325,7 +403,7 @@ async function main() {
           eventLogPath: rebuilt.eventLogPath,
           bundleDir,
           manifestPath,
-          currentMilestoneId: rebuilt.snapshot.currentMilestoneId,
+          currentMilestoneId: snapshot.currentMilestoneId,
         },
         null,
         2,
@@ -346,6 +424,7 @@ async function main() {
 
     do {
       const rebuilt = rebuildSnapshot(snapshotPath);
+      rebuilt.snapshot.backends = resolveBackendConfigurationOption(options, rebuilt.snapshot.backends);
       const outputDir = typeof options['out-dir'] === 'string'
         ? path.resolve(options['out-dir'])
         : path.join(path.dirname(rebuilt.snapshotPath), `${path.basename(rebuilt.snapshotPath, '.json')}.supervisor`);
@@ -540,6 +619,7 @@ async function main() {
   if (command === 'supervisor-tick') {
     const snapshotPath = requireOption(options, 'snapshot');
     const rebuilt = rebuildSnapshot(snapshotPath);
+    rebuilt.snapshot.backends = resolveBackendConfigurationOption(options, rebuilt.snapshot.backends);
     const outputDir = typeof options['out-dir'] === 'string'
       ? options['out-dir']
       : path.join(path.dirname(rebuilt.snapshotPath), `${path.basename(rebuilt.snapshotPath, '.json')}.supervisor`);
