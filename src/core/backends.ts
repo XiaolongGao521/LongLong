@@ -1,6 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import {
+  createBackendCheckResult,
+  resolveBackendConfiguration,
+} from './backend-preflight.js';
 import { createImplementerContract, createPlannerRequest, selectNextActionableMilestone } from './contracts.js';
 import { evaluateRunHealth } from './health.js';
 import { createRecoveryPlan } from './recovery.js';
@@ -194,6 +198,8 @@ export function createCodexCliExecAdapter(
   const promptDocument = resolvePromptDocument(snapshot, worker.role, milestone, options);
   const promptText = stringifyPromptDocument(promptDocument, worker, runtimeProfile);
   const capabilities = RUNTIME_CAPABILITIES['codex-cli'];
+  const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
+  const backendCheck = createBackendCheckResult(snapshot, worker.role);
 
   return createCliExecutionEnvelope({
     operation: 'codex-cli.exec',
@@ -210,6 +216,8 @@ export function createCodexCliExecAdapter(
       args: ['exec', '--full-auto', promptText],
       pty: true,
       capabilities,
+      configuredBackend: backendConfiguration,
+      backendCheck,
       requestedRuntimeProfile: runtimeProfile,
       metadata: {
         stableWorkerLabel: true,
@@ -240,6 +248,8 @@ export function createClaudeCodeExecAdapter(
   const promptDocument = resolvePromptDocument(snapshot, worker.role, milestone, options);
   const promptText = stringifyPromptDocument(promptDocument, worker, runtimeProfile);
   const capabilities = RUNTIME_CAPABILITIES['claude-code'];
+  const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
+  const backendCheck = createBackendCheckResult(snapshot, worker.role);
 
   return createCliExecutionEnvelope({
     operation: 'claude-code.exec',
@@ -256,6 +266,8 @@ export function createClaudeCodeExecAdapter(
       args: ['--permission-mode', 'bypassPermissions', '--print', promptText],
       pty: false,
       capabilities,
+      configuredBackend: backendConfiguration,
+      backendCheck,
       requestedRuntimeProfile: runtimeProfile,
       metadata: {
         stableWorkerLabel: true,
@@ -285,6 +297,8 @@ export function createLaizyWatchdogAdapter(
       ?? path.join(path.dirname(snapshot.snapshotPath ?? path.resolve('state/runs/run.json')), `${path.basename(snapshot.snapshotPath ?? 'run.json', '.json')}.supervisor`),
   );
   const intervalSeconds = Number(options.intervalSeconds ?? 300);
+  const backendConfiguration = resolveBackendConfiguration(snapshot).watchdog;
+  const backendCheck = createBackendCheckResult(snapshot, 'watchdog');
 
   return {
     schemaVersion: 1,
@@ -318,6 +332,8 @@ export function createLaizyWatchdogAdapter(
         '--verification-command',
         options.verificationCommand ?? '/usr/bin/node scripts/build-check.mjs',
       ],
+      configuredBackend: backendConfiguration,
+      backendCheck,
       metadata: {
         stableWorkerLabel: true,
         cadence: 'watchdog',

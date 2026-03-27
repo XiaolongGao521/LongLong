@@ -38,12 +38,14 @@ run(process.execPath, ['--check', 'dist/src/core/health.js']);
 run(process.execPath, ['--check', 'dist/src/core/recovery.js']);
 run(process.execPath, ['--check', 'dist/src/core/openclaw.js']);
 run(process.execPath, ['--check', 'dist/src/core/backends.js']);
+run(process.execPath, ['--check', 'dist/src/core/backend-preflight.js']);
 run(process.execPath, ['--check', 'dist/src/core/runtime-profile.js']);
 run(process.execPath, ['--check', 'dist/src/core/verification.js']);
 run(process.execPath, ['--check', 'dist/src/core/supervisor.js']);
 
 const [
   backendsModule,
+  backendPreflightModule,
   contractsModule,
   eventsModule,
   healthModule,
@@ -56,6 +58,7 @@ const [
   supervisorModule,
 ] = await Promise.all([
   importBuiltModule('dist/src/core/backends.js'),
+  importBuiltModule('dist/src/core/backend-preflight.js'),
   importBuiltModule('dist/src/core/contracts.js'),
   importBuiltModule('dist/src/core/events.js'),
   importBuiltModule('dist/src/core/health.js'),
@@ -74,6 +77,12 @@ const {
   createLaizyWatchdogAdapter,
   writeBackendAdapter,
 } = backendsModule;
+const {
+  createBackendCheckResult,
+  createDefaultBackendConfiguration,
+  resolveBackendConfiguration,
+  writeBackendCheckResult,
+} = backendPreflightModule;
 const {
   createImplementerContract,
   createPlannerIntent,
@@ -132,6 +141,8 @@ const runState = createRunState({
   planPath: plan.path,
   milestones: syntheticMilestones,
 });
+assert(runState.backends.implementer.backend === 'openclaw', 'expected implementer backend to default to openclaw');
+assert(runState.backends.watchdog.backend === 'laizy-watchdog', 'expected watchdog backend to default to the local laizy watchdog');
 
 const initialized = initializeRunArtifacts(snapshotPath, runState);
 assert(initialized.snapshot.currentMilestoneId === targetMilestoneId, `expected initialized run to point at ${targetMilestoneId}`);
@@ -150,6 +161,12 @@ const plannerIntent = createPlannerIntent(initialized.snapshot, selected);
 assert(plannerIntent.kind === 'planner.intent', 'expected planner intent document kind');
 assert(plannerIntent.scope.milestoneCount === 1, 'expected planner intent to enforce single-milestone scope');
 assert((plannerIntent.selectedMilestone?.details.length ?? 0) >= 1, 'expected planner intent to include milestone details');
+
+const defaultBackendConfiguration = createDefaultBackendConfiguration();
+assert(defaultBackendConfiguration.planner.supportedBackends.includes('codex-cli'), 'expected planner role to support codex-cli configuration');
+assert(defaultBackendConfiguration.recovery.supportedBackends.includes('claude-code'), 'expected recovery role to support claude-code configuration');
+assert(defaultBackendConfiguration.watchdog.supportedBackends.includes('laizy-watchdog'), 'expected watchdog role to support the local laizy watchdog');
+assert(resolveBackendConfiguration(initialized.snapshot).verifier.backend === 'openclaw', 'expected snapshot backend configuration to resolve from run state');
 
 const plannerRequest = createPlannerRequest(initialized.snapshot);
 assert(plannerRequest.kind === 'planner.request', 'expected planner request document kind');
@@ -198,6 +215,30 @@ assert(laizyWatchdogAdapter.kind === 'laizy.watchdog', 'expected local watchdog 
 assert(laizyWatchdogAdapter.payload.command === 'laizy', 'expected local watchdog adapter to target the laizy CLI');
 assert(laizyWatchdogAdapter.payload.args[0] === 'watchdog', 'expected local watchdog adapter to use the watchdog subcommand');
 assert(laizyWatchdogAdapter.payload.mode === 'ensure', 'expected local watchdog adapter to default to ensure mode');
+
+const backendCheckResult = createBackendCheckResult(initialized.snapshot, 'implementer');
+assert(backendCheckResult.kind === 'backend.check-result', 'expected backend preflight output document kind');
+assert(backendCheckResult.backend.role === 'implementer', 'expected backend preflight output to target the selected role');
+assert(backendCheckResult.probes.map((probe) => probe.name).join(',') === 'installation,invocation,liveness', 'expected backend preflight output to cover installation, invocation, and liveness');
+assert(backendCheckResult.probes.every((probe) => ['not-run', 'passed', 'failed', 'not-applicable'].includes(probe.status)), 'expected backend preflight output to produce machine-readable probe statuses');
+const backendCheckPath = writeBackendCheckResult(path.join(tempDir, 'backend-checks', 'implementer.json'), backendCheckResult);
+const persistedBackendCheck = JSON.parse(readFileSync(backendCheckPath, 'utf8'));
+assert(persistedBackendCheck.worker.role === 'implementer', 'expected persisted backend preflight output to remain machine-readable');
+const watchdogBackendCheckResult = createBackendCheckResult(initialized.snapshot, 'watchdog');
+assert(watchdogBackendCheckResult.backend.backend === 'laizy-watchdog', 'expected watchdog backend preflight to target the local laizy watchdog');
+assert(watchdogBackendCheckResult.probes[2]?.name === 'liveness', 'expected watchdog backend preflight to include a liveness probe');
+
+const cliBackendCheckResult = run(process.execPath, [
+  'dist/src/index.js',
+  'emit-backend-check',
+  '--snapshot',
+  snapshotPath,
+  '--worker',
+  'watchdog',
+]);
+const cliBackendCheckOutput = JSON.parse(cliBackendCheckResult.stdout);
+assert(cliBackendCheckOutput.kind === 'backend.check-result', 'expected CLI backend check emission to remain machine-readable');
+assert(cliBackendCheckOutput.worker.role === 'watchdog', 'expected CLI backend check emission to preserve the requested worker role');
 
 const sendAdapter = createSessionSendAdapter(initialized.snapshot, {
   worker: 'implementer',
@@ -254,8 +295,10 @@ assert(laizySkillSource.includes('"bins":["laizy"]'), 'expected shipped skill me
 assert(laizySkillSource.includes('laizy start-run'), 'expected shipped skill guidance to keep the laizy CLI as the primary operator surface');
 assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path when the plan is not in needs-plan bootstrap mode');
 assert(bootstrapManifest.documents.laizyWatchdog, 'expected bootstrap manifest to include a local watchdog adapter path');
+assert(bootstrapManifest.documents.watchdogBackendCheck, 'expected bootstrap manifest to include a watchdog backend health-check document');
 assert(bootstrapManifest.documents.codexImplementerExec, 'expected bootstrap manifest to include a codex implementer adapter path');
 assert(bootstrapManifest.documents.claudeImplementerExec, 'expected bootstrap manifest to include a claude implementer adapter path');
+assert(bootstrapManifest.documents.implementerBackendCheck, 'expected bootstrap manifest to include an implementer backend health-check document');
 const bootstrapSpawnAdapter = JSON.parse(readFileSync(bootstrapManifest.documents.implementerSpawn, 'utf8'));
 assert(bootstrapSpawnAdapter.kind === 'openclaw.sessions_spawn', 'expected bootstrap bundle to include a machine-readable spawn adapter');
 assert(bootstrapSpawnAdapter.runtimeProfile?.thinking, 'expected bootstrap spawn adapter to include runtime-profile data');
@@ -323,6 +366,7 @@ assert(continueBundle.documents.implementerContract, 'expected continue bundle t
 assert(continueBundle.documents.implementerSpawn, 'expected continue bundle to include an OpenClaw implementer spawn adapter');
 assert(continueBundle.documents.codexImplementerExec, 'expected continue bundle to include a codex implementer adapter');
 assert(continueBundle.documents.claudeImplementerExec, 'expected continue bundle to include a claude implementer adapter');
+assert(continueBundle.documents.implementerBackendCheck, 'expected continue bundle to include an implementer backend health-check document');
 const persistedContinueDecision = JSON.parse(readFileSync(continueBundle.decisionPath, 'utf8'));
 assert(persistedContinueDecision.decision === 'continue', 'expected persisted continue decision to remain machine-readable');
 
@@ -553,6 +597,7 @@ assert(emptyBootstrapManifest.documents.plannerRequest, 'expected empty plan boo
 assert(emptyBootstrapManifest.documents.openClawPlannerSpawn, 'expected empty plan bootstrap manifest to include an OpenClaw planner spawn adapter');
 assert(emptyBootstrapManifest.documents.codexPlannerExec, 'expected empty plan bootstrap manifest to include a codex planner adapter');
 assert(emptyBootstrapManifest.documents.claudePlannerExec, 'expected empty plan bootstrap manifest to include a claude planner adapter');
+assert(emptyBootstrapManifest.documents.plannerBackendCheck, 'expected empty plan bootstrap manifest to include a planner backend health-check document');
 assert(!emptyBootstrapManifest.documents.implementerSpawn, 'expected empty plan bootstrap manifest to avoid emittting implementer spawn instructions');
 const persistedPlannerRequest = JSON.parse(readFileSync(emptyBootstrapManifest.documents.plannerRequest, 'utf8'));
 assert(persistedPlannerRequest.kind === 'planner.request', 'expected persisted bootstrap planner request to remain machine-readable');

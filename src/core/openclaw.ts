@@ -1,6 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import {
+  createBackendCheckResult,
+  resolveBackendConfiguration,
+} from './backend-preflight.js';
 import { createImplementerContract, createPlannerRequest } from './contracts.js';
 import { evaluateRunHealth } from './health.js';
 import { createRecoveryPlan } from './recovery.js';
@@ -94,6 +98,8 @@ export function createSessionSpawnAdapter(
   const runtime = options.runtime ?? 'subagent';
   const decision = inferDecisionName(snapshot, worker.role);
   const runtimeProfile = options.runtimeProfile ?? selectSupervisorRuntimeProfile(snapshot, decision, milestone);
+  const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
+  const backendCheck = createBackendCheckResult(snapshot, worker.role);
   const contract = worker.role === 'implementer'
     ? createImplementerContract(snapshot, milestone)
     : null;
@@ -121,6 +127,8 @@ export function createSessionSpawnAdapter(
       cwd: snapshot.repoPath,
       milestoneId: milestone?.id ?? null,
       promptDocument: contract ?? plannerRequest ?? recoveryPlan,
+      configuredBackend: backendConfiguration,
+      backendCheck,
       runtimeProfile,
       metadata: {
         stableWorkerLabel: true,
@@ -192,6 +200,8 @@ export function createCronAdapter(
   const worker = resolveWorker(snapshot, options.worker ?? 'watchdog');
   const mode = options.mode ?? 'ensure';
   const schedule = options.schedule ?? '*/5 * * * *';
+  const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
+  const backendCheck = createBackendCheckResult(snapshot, worker.role);
   const prompt = options.prompt
     ?? `Inspect ${snapshot.workers.implementer} for milestone progress or stalls in ${path.basename(snapshot.repoPath)}.`;
 
@@ -206,6 +216,8 @@ export function createCronAdapter(
       schedule,
       targetWorker: worker.label,
       prompt,
+      configuredBackend: backendConfiguration,
+      backendCheck,
       metadata: {
         stableWorkerLabel: true,
         cadence: 'watchdog',

@@ -45,6 +45,10 @@ import {
   createLaizyWatchdogAdapter,
   writeBackendAdapter,
 } from './core/backends.js';
+import {
+  createBackendCheckResult,
+  writeBackendCheckResult,
+} from './core/backend-preflight.js';
 import { createRunState } from './core/run-state.js';
 import { selectSupervisorRuntimeProfile } from './core/runtime-profile.js';
 import {
@@ -82,6 +86,7 @@ Usage:
   node dist/src/index.js emit-codex-cli-exec --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] [--milestone <id>] [--out <path>]
   node dist/src/index.js emit-claude-code-exec --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] [--milestone <id>] [--out <path>]
   node dist/src/index.js emit-laizy-watchdog --snapshot <snapshot-path> [--out-dir <dir>] [--interval-seconds <n>] [--stall-threshold-minutes <n>] [--verification-command <text>] [--mode <ensure|disable>] [--out <path>]
+  node dist/src/index.js emit-backend-check --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] [--out <path>]
   node dist/src/index.js emit-verification-command --snapshot <snapshot-path> [--milestone <id>] [--command <text>] [--stage <value>] [--out <path>]
   node dist/src/index.js emit-reviewer-output --snapshot <snapshot-path> [--milestone <id>] [--verdict <approved|changes-requested|needs-review>] [--summary <text>] [--next-action <value>] [--finding <text> ...] [--out <path>]
   node dist/src/index.js record-verification-result --snapshot <snapshot-path> --milestone <id> --command <text> --status <pending|passed|failed> [--output-path <path>] [--summary <text>] [--reviewer-output <path>]
@@ -230,10 +235,15 @@ async function main() {
       mode: 'ensure',
     });
     const laizyWatchdogPath = writeBackendAdapter(path.join(bundleDir, 'laizy-watchdog.json'), laizyWatchdog);
+    const watchdogBackendCheckPath = writeBackendCheckResult(
+      path.join(bundleDir, 'watchdog.backend-check.json'),
+      createBackendCheckResult(rebuilt.snapshot, 'watchdog'),
+    );
     const documents: Record<string, string> = {
       plannerIntent: plannerIntentPath,
       watchdogCron: watchdogCronPath,
       laizyWatchdog: laizyWatchdogPath,
+      watchdogBackendCheck: watchdogBackendCheckPath,
     };
 
     if (rebuilt.snapshot.planState.status === 'needs-plan') {
@@ -252,10 +262,15 @@ async function main() {
         path.join(bundleDir, 'claude-code-planner-exec.json'),
         createClaudeCodeExecAdapter(rebuilt.snapshot, { worker: 'planner', runtimeProfile: plannerRuntimeProfile }),
       );
+      const plannerBackendCheckPath = writeBackendCheckResult(
+        path.join(bundleDir, 'planner.backend-check.json'),
+        createBackendCheckResult(rebuilt.snapshot, 'planner'),
+      );
       documents.plannerRequest = plannerRequestPath;
       documents.openClawPlannerSpawn = openClawPlannerSpawnPath;
       documents.codexPlannerExec = codexPlannerExecPath;
       documents.claudePlannerExec = claudePlannerExecPath;
+      documents.plannerBackendCheck = plannerBackendCheckPath;
     } else {
       const implementerRuntimeProfile = selectSupervisorRuntimeProfile(rebuilt.snapshot, 'continue');
       const implementerContract = createImplementerContract(rebuilt.snapshot);
@@ -274,10 +289,15 @@ async function main() {
         path.join(bundleDir, 'claude-code-implementer-exec.json'),
         createClaudeCodeExecAdapter(rebuilt.snapshot, { worker: 'implementer', runtimeProfile: implementerRuntimeProfile }),
       );
+      const implementerBackendCheckPath = writeBackendCheckResult(
+        path.join(bundleDir, 'implementer.backend-check.json'),
+        createBackendCheckResult(rebuilt.snapshot, 'implementer'),
+      );
       documents.implementerContract = implementerContractPath;
       documents.implementerSpawn = implementerSpawnPath;
       documents.codexImplementerExec = codexImplementerExecPath;
       documents.claudeImplementerExec = claudeImplementerExecPath;
+      documents.implementerBackendCheck = implementerBackendCheckPath;
     }
 
     const manifestPath = writeJsonDocument(path.join(bundleDir, 'bootstrap-manifest.json'), {
@@ -293,6 +313,7 @@ async function main() {
       currentMilestoneId: rebuilt.snapshot.currentMilestoneId,
       bundleDir,
       planState: rebuilt.snapshot.planState,
+      backends: rebuilt.snapshot.backends,
       documents,
     });
 
@@ -703,6 +724,23 @@ async function main() {
     if (typeof options.out === 'string') {
       const outputPath = writeBackendAdapter(options.out, document);
       console.log(JSON.stringify({ outputPath, kind: document.kind, worker: document.worker.label }, null, 2));
+      return;
+    }
+
+    console.log(JSON.stringify(document, null, 2));
+    return;
+  }
+
+  if (command === 'emit-backend-check') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    const document = createBackendCheckResult(rebuilt.snapshot, typeof options.worker === 'string' ? options.worker as WorkerRole : 'implementer', {
+      outputPath: typeof options.out === 'string' ? options.out : undefined,
+    });
+
+    if (typeof options.out === 'string') {
+      const outputPath = writeBackendCheckResult(options.out, document);
+      console.log(JSON.stringify({ outputPath, kind: document.kind, worker: document.worker.label, overallStatus: document.overallStatus }, null, 2));
       return;
     }
 

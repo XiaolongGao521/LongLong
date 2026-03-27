@@ -1,4 +1,6 @@
-import type { MilestonePlanEntry, PlanState, RunSnapshot, WorkerRole } from './types.js';
+import { createDefaultBackendConfiguration } from './backend-preflight.js';
+
+import type { BackendConfiguration, MilestonePlanEntry, PlanState, RunSnapshot, WorkerRole } from './types.js';
 
 function derivePlanState(milestones: MilestonePlanEntry[]): PlanState {
   const milestoneCount = milestones.length;
@@ -41,6 +43,7 @@ export function createRunState({
   planPath,
   milestones,
   workerLabels = {},
+  backends,
 }: {
   runId: string;
   goal: string;
@@ -48,6 +51,7 @@ export function createRunState({
   planPath: string;
   milestones: MilestonePlanEntry[];
   workerLabels?: Partial<Record<WorkerRole, RunSnapshot['workers'][WorkerRole]>>;
+  backends?: BackendConfiguration;
 }): RunSnapshot {
   const now = new Date().toISOString();
   const current = milestones.find((milestone) => !milestone.completed) ?? null;
@@ -61,6 +65,7 @@ export function createRunState({
     planPath,
     status: planState.status === 'completed' ? 'completed' : 'planned',
     planState,
+    backends: backends ?? createDefaultBackendConfiguration(),
     createdAt: now,
     updatedAt: now,
     currentMilestoneId: current?.id ?? null,

@@ -1,5 +1,9 @@
 import path from 'node:path';
 
+import {
+  createBackendCheckResult,
+  writeBackendCheckResult,
+} from './backend-preflight.js';
 import { createImplementerContract, createPlannerRequest, selectNextActionableMilestone, writeContractDocument } from './contracts.js';
 import {
   createClaudeCodeExecAdapter,
@@ -200,10 +204,15 @@ export function writeSupervisorBundle(
       path.join(resolvedOutputDir, `${baseName}.claude-code-planner-exec.json`),
       createClaudeCodeExecAdapter(snapshot, { worker: 'planner', runtimeProfile: decision.runtimeProfile }),
     );
+    const plannerBackendCheckPath = writeBackendCheckResult(
+      path.join(resolvedOutputDir, `${baseName}.planner.backend-check.json`),
+      createBackendCheckResult(snapshot, 'planner'),
+    );
     documents.plannerRequest = plannerRequestPath;
     documents.plannerSpawn = plannerSpawnPath;
     documents.codexPlannerExec = codexPlannerExecPath;
     documents.claudePlannerExec = claudePlannerExecPath;
+    documents.plannerBackendCheck = plannerBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'planner.request' ? plannerRequestPath : action.documentPath,
@@ -225,10 +234,15 @@ export function writeSupervisorBundle(
       path.join(resolvedOutputDir, `${baseName}.claude-code-implementer-exec.json`),
       createClaudeCodeExecAdapter(snapshot, { worker: 'implementer', runtimeProfile: decision.runtimeProfile }),
     );
+    const implementerBackendCheckPath = writeBackendCheckResult(
+      path.join(resolvedOutputDir, `${baseName}.implementer.backend-check.json`),
+      createBackendCheckResult(snapshot, 'implementer'),
+    );
     documents.implementerContract = contractPath;
     documents.implementerSpawn = spawnPath;
     documents.codexImplementerExec = codexExecPath;
     documents.claudeImplementerExec = claudeExecPath;
+    documents.implementerBackendCheck = implementerBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'implementer.contract' ? contractPath : action.documentPath,
@@ -265,10 +279,15 @@ export function writeSupervisorBundle(
         runtimeProfile: decision.runtimeProfile,
       }),
     );
+    const recoveryBackendCheckPath = writeBackendCheckResult(
+      path.join(resolvedOutputDir, `${baseName}.recovery.backend-check.json`),
+      createBackendCheckResult(snapshot, 'recovery'),
+    );
     documents.recoveryPlan = recoveryPlanPath;
     documents.recoverySpawn = recoverySpawnPath;
     documents.codexRecoveryExec = codexRecoveryExecPath;
     documents.claudeRecoveryExec = claudeRecoveryExecPath;
+    documents.recoveryBackendCheck = recoveryBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'recovery.plan' ? recoveryPlanPath : action.documentPath,
@@ -291,9 +310,14 @@ export function writeSupervisorBundle(
       path.join(resolvedOutputDir, `${baseName}.claude-code-verifier-exec.json`),
       createClaudeCodeExecAdapter(snapshot, { worker: 'verifier', runtimeProfile: decision.runtimeProfile }),
     );
+    const verifierBackendCheckPath = writeBackendCheckResult(
+      path.join(resolvedOutputDir, `${baseName}.verifier.backend-check.json`),
+      createBackendCheckResult(snapshot, 'verifier'),
+    );
     documents.verificationCommand = verificationCommandPath;
     documents.codexVerifierExec = codexVerifierExecPath;
     documents.claudeVerifierExec = claudeVerifierExecPath;
+    documents.verifierBackendCheck = verifierBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'verification.command' ? verificationCommandPath : action.documentPath,
@@ -314,8 +338,13 @@ export function writeSupervisorBundle(
         mode: 'disable',
       }),
     );
+    const watchdogBackendCheckPath = writeBackendCheckResult(
+      path.join(resolvedOutputDir, `${sanitizeSegment(snapshot.runId, 'run')}.watchdog.backend-check.json`),
+      createBackendCheckResult(snapshot, 'watchdog'),
+    );
     documents.disableWatchdog = disableWatchdogPath;
     documents.disableLaizyWatchdog = disableLaizyWatchdogPath;
+    documents.watchdogBackendCheck = watchdogBackendCheckPath;
     decision.actions = decision.actions.map((action) => ({
       ...action,
       documentPath: action.kind === 'openclaw.cron'

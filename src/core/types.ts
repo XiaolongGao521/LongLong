@@ -9,6 +9,42 @@ export type MilestonePlanEntry = {
 export type MilestoneStatus = 'planned' | 'implementing' | 'verifying' | 'completed' | 'blocked';
 export type VerificationStatus = 'pending' | 'passed' | 'failed';
 export type WorkerRole = 'planner' | 'implementer' | 'watchdog' | 'recovery' | 'verifier';
+export type BackendKind = 'openclaw' | 'codex-cli' | 'claude-code' | 'laizy-watchdog';
+export type BackendProbeName = 'installation' | 'invocation' | 'liveness';
+export type BackendProbeStatus = 'not-run' | 'not-applicable' | 'passed' | 'failed';
+export type BackendOverallStatus = 'unknown' | 'healthy' | 'unhealthy';
+export type WorkerBackendConfig = {
+  role: WorkerRole;
+  backend: BackendKind;
+  supportedBackends: BackendKind[];
+  preferredRuntime: string | null;
+};
+export type BackendConfiguration = Record<WorkerRole, WorkerBackendConfig>;
+export type BackendHealthProbe = {
+  name: BackendProbeName;
+  status: BackendProbeStatus;
+  detail: string;
+  command: string | null;
+  checkedAt: string;
+};
+export type BackendCheckResultDocument = {
+  schemaVersion: number;
+  kind: 'backend.check-result';
+  generatedAt: string;
+  runId: string;
+  repoPath: string;
+  planPath: string;
+  snapshotPath: string | null;
+  eventLogPath: string | null;
+  worker: {
+    role: WorkerRole;
+    label: WorkerLabel;
+  };
+  backend: WorkerBackendConfig;
+  overallStatus: BackendOverallStatus;
+  probes: BackendHealthProbe[];
+  outputPath: string | null;
+};
 export type WorkerLabel =
   | 'laizy-planner'
   | 'laizy-implementer'
@@ -88,6 +124,7 @@ export type RunSnapshot = {
   planPath: string;
   status: MilestoneStatus | 'completed';
   planState: PlanState;
+  backends: BackendConfiguration;
   createdAt: string;
   updatedAt: string;
   currentMilestoneId: string | null;
