@@ -50,6 +50,15 @@ Primary sources:
 
 - verification records in the run snapshot
 - reviewer-output documents under `state/verification/`
+- supervisor decisions and bundles when checking whether Stage 4 kept the retry path bounded to the active milestone
+
+Stage 4 verification-flow hardening should remain inspectable from artifacts alone. In practice, that means an operator should be able to confirm all of the following without replaying chat history:
+
+- the active milestone entered `verifying`
+- the verification command that was run
+- whether the latest verification verdict passed or failed
+- whether reviewer guidance says to `complete-milestone` or retry the same milestone
+- that completion only happened after a passed verification result was recorded
 
 ### 3. Recovery and watchdog health
 

@@ -175,8 +175,9 @@ After that retry-oriented supervisor tick, inspect the new bundle and confirm it
 - `eventDerivedState.latestVerification.evidence.reviewerNextAction` explains the reviewer-directed redo step when present
 - `decision.reason`, `continuation.summary`, and the implementer action summary should explicitly say the next move is a bounded retry on the active milestone rather than a broader recovery or a new milestone
 - `E2.implementer-contract.json` remains the durable handoff document for the redo path, so the retry stays compatibility-safe and single-milestone scoped
+- the snapshot verification history should make it obvious that `completed` is still blocked until a later passed verification result is recorded for `E2`
 
-The repository build-check reinforces this example by asserting the docs and runtime flows keep describing the same restart-safe supervisor/recovery behavior.
+The repository build-check reinforces this example by asserting the docs and runtime flows keep describing the same restart-safe supervisor/recovery behavior, bounded retry semantics, and verification-gated completion evidence.
 
 ## 8. Milestone closeout
 
