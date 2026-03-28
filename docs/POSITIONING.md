@@ -82,6 +82,8 @@ As implemented today, Laizy provides a TypeScript CLI that can:
 
 That makes the current product best described as a narrow repo control loop for supervised software delivery.
 
+The source of truth is the repo-local state and the emitted contracts, not a chat transcript.
+
 ## Intended operator mental model
 
 Use Laizy when you want this loop:
