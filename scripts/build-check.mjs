@@ -52,7 +52,7 @@ function defaultBootstrapDir(snapshotPath) {
     : `${resolvedSnapshotPath}.bootstrap`;
 }
 
-run('/usr/bin/env', ['bash', '-lc', 'rm -rf dist && /usr/bin/npx tsc -p tsconfig.json']);
+run('/usr/bin/env', ['bash', '-lc', 'rm -rf dist && node ./node_modules/typescript/bin/tsc -p tsconfig.json']);
 run(process.execPath, ['--check', 'dist/src/index.js']);
 run(process.execPath, ['--check', 'dist/src/core/plan.js']);
 run(process.execPath, ['--check', 'dist/src/core/run-state.js']);
@@ -318,6 +318,30 @@ const cliBackendCheckResult = run(process.execPath, [
 const cliBackendCheckOutput = JSON.parse(cliBackendCheckResult.stdout);
 assert(cliBackendCheckOutput.kind === 'backend.check-result', 'expected CLI backend check emission to remain machine-readable');
 assert(cliBackendCheckOutput.worker.role === 'watchdog', 'expected CLI backend check emission to preserve the requested worker role');
+const checkBackendsOutputDir = path.join(tempDir, 'all-backend-checks');
+const checkBackendsResult = run(process.execPath, [
+  'dist/src/index.js',
+  'check-backends',
+  '--snapshot',
+  snapshotPath,
+  '--out-dir',
+  checkBackendsOutputDir,
+]);
+const checkBackendsOutput = JSON.parse(checkBackendsResult.stdout);
+assert(checkBackendsOutput.kind === 'backend.check-summary', 'expected operator-facing backend validation summary to be machine-readable');
+assert(checkBackendsOutput.overallStatus === 'healthy', 'expected healthy backend validation summary when fake backends are installed');
+assert(checkBackendsOutput.documents.length === 5, 'expected operator-facing backend validation to cover every worker role');
+assert(readFileSync(path.join(checkBackendsOutputDir, 'planner.backend-check.json'), 'utf8').includes('backend.check-result'), 'expected operator-facing backend validation to persist per-role backend check artifacts');
+const singleCheckBackendsResult = run(process.execPath, [
+  'dist/src/index.js',
+  'check-backends',
+  '--snapshot',
+  snapshotPath,
+  '--worker',
+  'implementer',
+]);
+const singleCheckBackendsOutput = JSON.parse(singleCheckBackendsResult.stdout);
+assert(singleCheckBackendsOutput.worker.role === 'implementer', 'expected single-worker operator-facing backend validation to preserve the requested role');
 
 const sendAdapter = createSessionSendAdapter(initialized.snapshot, {
   worker: 'implementer',
@@ -372,6 +396,9 @@ assert(
 const laizySkillSource = readFileSync('skills/laizy/SKILL.md', 'utf8');
 assert(laizySkillSource.includes('"bins":["laizy"]'), 'expected shipped skill metadata to advertise laizy as the only required binary');
 assert(laizySkillSource.includes('laizy start-run'), 'expected shipped skill guidance to keep the laizy CLI as the primary operator surface');
+const readmeSource = readFileSync('README.md', 'utf8');
+assert(readmeSource.includes('laizy check-backends'), 'expected README to document the operator-facing backend validation command');
+assert(readmeSource.includes('--backend-config'), 'expected README to document backend configuration overrides');
 assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path when the plan is not in needs-plan bootstrap mode');
 assert(bootstrapManifest.documents.laizyWatchdog, 'expected bootstrap manifest to include a local watchdog adapter path');
 assert(bootstrapManifest.documents.watchdogBackendCheck, 'expected bootstrap manifest to include a watchdog backend health-check document');
@@ -431,6 +458,22 @@ process.env.PATH = originalPath;
 assert(failingSupervisorResult.stderr.includes('supervisor-tick cannot emit continue adapters'), 'expected supervisor-tick preflight failure to explain why continuation was blocked');
 const failingSupervisorCheck = JSON.parse(readFileSync(path.join(tempDir, 'supervisor-unhealthy', `${targetMilestoneId}.implementer.backend-check.json`), 'utf8'));
 assert(failingSupervisorCheck.overallStatus === 'unhealthy', 'expected supervisor-tick preflight failure to persist the unhealthy backend check artifact');
+process.env.PATH = `${degradedBinDir}${path.delimiter}/usr/bin${path.delimiter}/bin`;
+const unhealthyCheckBackendsResult = run(process.execPath, [
+  'dist/src/index.js',
+  'check-backends',
+  '--snapshot',
+  cliBootstrapSnapshotPath,
+  '--out-dir',
+  path.join(tempDir, 'all-backend-checks-unhealthy'),
+  '--backend-config',
+  unhealthyBackendConfigPath,
+]);
+process.env.PATH = originalPath;
+const unhealthyCheckBackendsOutput = JSON.parse(unhealthyCheckBackendsResult.stdout);
+assert(unhealthyCheckBackendsOutput.kind === 'backend.check-summary', 'expected unhealthy operator-facing backend validation summary to remain machine-readable');
+assert(unhealthyCheckBackendsOutput.overallStatus === 'unhealthy', 'expected operator-facing backend validation to report unhealthy when a configured backend is unavailable');
+assert(unhealthyCheckBackendsOutput.documents.some((document) => document.role === 'implementer' && document.overallStatus === 'unhealthy'), 'expected unhealthy operator-facing backend validation to pinpoint the failed implementer backend');
 const watchdogCliResult = run(process.execPath, [
   'dist/src/index.js',
   'watchdog',

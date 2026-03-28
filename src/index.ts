@@ -62,6 +62,8 @@ import {
 import { writeSupervisorBundle } from './core/supervisor.js';
 import type { MilestoneStatus, VerificationStatus, WorkerLabel, WorkerRole } from './core/types.js';
 
+const ALL_WORKER_ROLES: WorkerRole[] = ['planner', 'implementer', 'recovery', 'verifier', 'watchdog'];
+
 function printHelp() {
   console.log(`Laizy CLI
 
@@ -81,6 +83,7 @@ Usage:
   node dist/src/index.js inspect-health --snapshot <snapshot-path> [--stall-threshold-minutes <n>] [--now <iso>] [--out <report-path>]
   node dist/src/index.js plan-recovery --snapshot <snapshot-path> [--stall-threshold-minutes <n>] [--now <iso>] [--out <plan-path>]
   node dist/src/index.js supervisor-tick --snapshot <snapshot-path> [--out-dir <dir>] [--stall-threshold-minutes <n>] [--verification-command <text>] [--backend-config <json-or-path>]
+  node dist/src/index.js check-backends --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] [--out <path>] [--out-dir <dir>] [--backend-config <json-or-path>]
   node dist/src/index.js record-recovery-action --snapshot <snapshot-path> --action <action> --reason <text> --worker <worker-name> [--milestone <id>] [--note <text>] [--source <value>]
   node dist/src/index.js emit-openclaw-spawn --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] [--milestone <id>] [--runtime <value>] [--out <path>]
   node dist/src/index.js emit-openclaw-send --snapshot <snapshot-path> [--worker <implementer|recovery|watchdog|planner|verifier>] --message <text> [--mode <append|replace>] [--out <path>]
@@ -808,6 +811,54 @@ async function main() {
     }
 
     console.log(JSON.stringify(document, null, 2));
+    return;
+  }
+
+  if (command === 'check-backends') {
+    const snapshotPath = requireOption(options, 'snapshot');
+    const rebuilt = rebuildSnapshot(snapshotPath);
+    rebuilt.snapshot.backends = resolveBackendConfigurationOption(options, rebuilt.snapshot.backends);
+
+    if (typeof options.worker === 'string') {
+      const workerRole = options.worker as WorkerRole;
+      const document = createBackendCheckResult(rebuilt.snapshot, workerRole, {
+        outputPath: typeof options.out === 'string' ? options.out : undefined,
+      });
+
+      if (typeof options.out === 'string') {
+        const outputPath = writeBackendCheckResult(options.out, document);
+        console.log(JSON.stringify({ outputPath, kind: document.kind, worker: document.worker.label, overallStatus: document.overallStatus }, null, 2));
+        return;
+      }
+
+      console.log(JSON.stringify(document, null, 2));
+      return;
+    }
+
+    const outputDir = typeof options['out-dir'] === 'string'
+      ? path.resolve(options['out-dir'])
+      : path.join(path.dirname(rebuilt.snapshotPath), `${path.basename(rebuilt.snapshotPath, '.json')}.backend-checks`);
+    const documents = ALL_WORKER_ROLES.map((role) => {
+      const outputPath = path.join(outputDir, `${role}.backend-check.json`);
+      const document = createBackendCheckResult(rebuilt.snapshot, role, { outputPath });
+      const writtenOutputPath = writeBackendCheckResult(outputPath, document);
+      return {
+        role,
+        overallStatus: document.overallStatus,
+        backend: document.backend.backend,
+        outputPath: writtenOutputPath,
+      };
+    });
+    const overallStatus = documents.every((document) => document.overallStatus === 'healthy') ? 'healthy' : 'unhealthy';
+
+    console.log(JSON.stringify({
+      schemaVersion: 1,
+      kind: 'backend.check-summary',
+      snapshotPath: rebuilt.snapshotPath,
+      outputDir,
+      overallStatus,
+      documents,
+    }, null, 2));
     return;
   }
 

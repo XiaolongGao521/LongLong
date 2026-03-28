@@ -90,6 +90,58 @@ That flow is designed to:
 - keep a watchdog running
 - recover stalled work with a separate worker
 
+## Backend configuration and preflight
+
+Laizy can carry explicit backend choices for each worker role:
+
+- `planner`
+- `implementer`
+- `recovery`
+- `verifier`
+- `watchdog`
+
+Pass backend overrides with `--backend-config` as either inline JSON or a path to a JSON file. Example:
+
+```json
+{
+  "planner": "openclaw",
+  "implementer": { "backend": "codex-cli", "preferredRuntime": "pty" },
+  "recovery": "claude-code",
+  "verifier": "openclaw",
+  "watchdog": "laizy-watchdog"
+}
+```
+
+Before Laizy emits worker adapters, it now runs machine-readable backend preflight checks for the configured backend:
+
+- installation
+- invocation
+- liveness
+
+For OpenClaw specifically, Laizy validates the local CLI plus gateway status on the current machine before emitting OpenClaw-backed worker handoffs.
+
+### Operator-facing backend validation
+
+Use `check-backends` when you want an explicit CLI preflight run without starting or advancing worker execution:
+
+```bash
+laizy check-backends \
+  --snapshot state/runs/demo-run.json \
+  --out-dir state/runs/demo-run.backend-checks
+```
+
+That writes one backend-check artifact per worker role and prints a machine-readable summary to stdout.
+
+To inspect one worker only:
+
+```bash
+laizy check-backends \
+  --snapshot state/runs/demo-run.json \
+  --worker implementer
+```
+
+Use `emit-backend-check` when you want the lower-level single-document primitive; use `check-backends` for the operator-facing all-workers validation path.
+
 ## What Laizy does today
 
 Laizy is already usable as a TypeScript-first CLI and orchestration layer with:
@@ -256,6 +308,16 @@ laizy init-run \
 ```
 
 Use `init-run` when you explicitly want only the snapshot/event log without the wrapper bundle.
+
+### Check configured backends
+
+```bash
+laizy check-backends \
+  --snapshot state/runs/demo-run.json \
+  --out-dir state/runs/demo-run.backend-checks
+```
+
+This is the explicit operator-facing preflight command. It rebuilds the snapshot, applies any `--backend-config` override, runs backend health probes for each configured worker backend, writes one JSON artifact per role, and prints a summary with the overall machine status.
 
 ### Show the next milestone
 

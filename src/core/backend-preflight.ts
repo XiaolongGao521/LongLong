@@ -215,13 +215,13 @@ function readablePathProbe(name: BackendHealthProbe['name'], detail: string, tar
 function createOpenClawProbes(snapshot: RunSnapshot): BackendHealthProbe[] {
   return [
     execProbe('installation', 'Verified the openclaw CLI is installed.', '/usr/bin/env', ['bash', '-lc', 'command -v openclaw'], { timeoutMs: 1000 }),
-    execProbe('invocation', 'Verified the openclaw CLI responds to help output.', 'openclaw', ['help'], { timeoutMs: 1500 }),
+    execProbe('invocation', 'Verified the openclaw CLI responds to help output.', 'openclaw', ['help'], { timeoutMs: 6000 }),
     execProbe(
       'liveness',
       'Verified the OpenClaw gateway status command responds on this machine.',
       'openclaw',
       ['gateway', 'status'],
-      { timeoutMs: 1000 },
+      { timeoutMs: 5000 },
     ),
   ];
 }
