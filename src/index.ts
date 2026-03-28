@@ -65,7 +65,13 @@ import type { MilestoneStatus, VerificationStatus, WorkerLabel, WorkerRole } fro
 const ALL_WORKER_ROLES: WorkerRole[] = ['planner', 'implementer', 'recovery', 'verifier', 'watchdog'];
 
 function printHelp() {
-  console.log(`Laizy CLI
+  console.log(`Laizy CLI — repo-native control loop for milestone-based coding work
+
+Recommended operator flow:
+  1. Start from a local implementation plan.
+  2. Bootstrap the run with start-run.
+  3. Ask supervisor-tick for the next bounded action.
+  4. Execute one milestone, then record verification before completion.
 
 Usage:
   node dist/src/index.js next --plan <path>
@@ -96,6 +102,11 @@ Usage:
   node dist/src/index.js emit-verification-command --snapshot <snapshot-path> [--milestone <id>] [--command <text>] [--stage <value>] [--out <path>]
   node dist/src/index.js emit-reviewer-output --snapshot <snapshot-path> [--milestone <id>] [--verdict <approved|changes-requested|needs-review>] [--summary <text>] [--next-action <value>] [--finding <text> ...] [--out <path>]
   node dist/src/index.js record-verification-result --snapshot <snapshot-path> --milestone <id> --command <text> --status <pending|passed|failed> [--output-path <path>] [--summary <text>] [--reviewer-output <path>]
+
+Notes:
+  - Keep command names stable; use start-run once, then supervisor-tick as the source of truth.
+  - Read emitted contracts/bundles instead of improvising the next step from chat memory.
+  - Complete milestones only after verification is recorded.
 `);
 }
 
