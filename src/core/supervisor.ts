@@ -183,7 +183,7 @@ export function createSupervisorDecision(
       requiresExternalExecution: true,
       documentPath: null,
       documentKind: 'recovery.plan',
-      summary: healthReport.recoveryRecommendation.reason,
+      summary: healthReport.recoveryRecommendation.summary,
       runtimeProfile: null,
     });
 

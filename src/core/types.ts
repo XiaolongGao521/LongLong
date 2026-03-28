@@ -154,15 +154,34 @@ export type RunEvent = {
   detail: Record<string, unknown>;
 };
 
+export type RecoveryTrigger = 'healthy' | 'completed' | 'run-blocked' | 'planned-no-activity' | 'implementer-stalled';
+
+export type RecoveryReasoningFact = {
+  label: string;
+  value: string | number | null;
+  detail: string;
+};
+
+export type RecoveryScope = {
+  mode: 'single-milestone' | 'run';
+  milestoneId: string | null;
+  milestoneTitle: string | null;
+  note: string;
+};
+
 export type RecoveryRecommendation = {
   schemaVersion: number;
   kind: 'recovery.recommendation';
   generatedAt: string;
   action: string;
+  summary: string;
   reason: string;
+  trigger: RecoveryTrigger;
   severity: string;
   worker: WorkerLabel;
   milestoneId: string | null;
+  evidence: RecoveryReasoningFact[];
+  scope: RecoveryScope;
 };
 
 export type HealthReport = {
@@ -173,9 +192,12 @@ export type HealthReport = {
   runId: string;
   runStatus: string;
   overallStatus: string;
+  statusSummary: string;
   activeMilestoneId: string | null;
   implementerHeartbeatAt: string | null;
   milestoneUpdatedAt: string | null;
+  lastProgressAt: string | null;
+  lastProgressSource: 'implementer-heartbeat' | 'milestone-update' | 'none';
   idleMinutes: number | null;
   recoveryRecommendation: RecoveryRecommendation;
 };
@@ -246,12 +268,36 @@ export type RecoveryPlan = {
     checkedAt: string;
     overallStatus: string;
     action: string;
+    summary: string;
+    reason: string;
   };
   action: string;
   worker: WorkerLabel;
   milestoneId: string | null;
   reason: string;
   severity: string;
+  activeMilestone: {
+    id: string;
+    title: string;
+    status: MilestoneStatus;
+  } | null;
+  scope: RecoveryScope;
+  recommendationBasis: {
+    trigger: RecoveryTrigger;
+    summary: string;
+    evidence: RecoveryReasoningFact[];
+  };
+  recoveryPath: {
+    mode: 'none' | 'resume-active-milestone' | 'blocked-escalation';
+    summary: string;
+    scope: RecoveryScope;
+    targetMilestone: {
+      id: string;
+      title: string;
+      status: MilestoneStatus;
+    } | null;
+    steps: string[];
+  };
   resumeContract: ImplementerContract | null;
   escalation: {
     targetWorker: WorkerLabel;
