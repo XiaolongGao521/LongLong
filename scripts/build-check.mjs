@@ -406,6 +406,10 @@ assert(laizySkillSource.includes('laizy start-run'), 'expected shipped skill gui
 const readmeSource = readFileSync('README.md', 'utf8');
 assert(readmeSource.includes('laizy check-backends'), 'expected README to document the operator-facing backend validation command');
 assert(readmeSource.includes('--backend-config'), 'expected README to document backend configuration overrides');
+assert(readmeSource.includes('The intended Stage 5 operator story is deliberately simple and compatibility-safe:'), 'expected README to make the Stage 5 operator story explicit');
+assert(readmeSource.includes('keep `start-run` / `supervisor-tick` as the durable repo-native control loop'), 'expected README to keep backend validation aligned with the repo-native control loop');
+assert(readmeSource.includes('hand the emitted contract to the selected runtime only after the backend summary says handoff is ready'), 'expected README to keep backend handoff gated on the emitted preflight summary');
+assert(readmeSource.includes('treat backend failures as probe-backed setup work, not as a reason to rename commands or widen milestone scope'), 'expected README to keep Stage 5 backend ergonomics compatibility-safe and single-milestone scoped');
 const architectureDocSource = readFileSync('docs/ARCHITECTURE.md', 'utf8');
 assert(architectureDocSource.includes('resume-after-rebuild'), 'expected architecture docs to describe restart-safe resume-after-rebuild decisions');
 assert(architectureDocSource.includes('recover-before-continuing'), 'expected architecture docs to describe bounded recover-before-continuing decisions');
@@ -421,6 +425,11 @@ assert(metricsDocSource.includes('supervisor decisions and bundles when checking
 assert(metricsDocSource.includes('Stage 4 verification-flow hardening should remain inspectable from artifacts alone.'), 'expected metrics docs to make artifact-first inspection explicit');
 assert(metricsDocSource.includes('whether reviewer guidance says to `complete-milestone` or retry the same milestone'), 'expected metrics docs to describe reviewer-guided completion vs retry evidence');
 assert(metricsDocSource.includes('that completion only happened after a passed verification result was recorded'), 'expected metrics docs to keep verification-gated completion measurable');
+assert(metricsDocSource.includes('Does the operator-facing validation story match the emitted handoff/runtime guidance?'), 'expected metrics docs to measure Stage 5 backend/operator guidance consistency');
+assert(metricsDocSource.includes('percent of healthy runs where `check-backends` and emitted adapters both recommend proceeding to the same bounded handoff'), 'expected metrics docs to track alignment between backend validation and emitted handoff guidance');
+assert(metricsDocSource.includes('Stage 5 backend/operator ergonomics should remain inspectable from repo artifacts and docs alone.'), 'expected metrics docs to keep Stage 5 backend/operator ergonomics artifact-first');
+assert(metricsDocSource.includes('`laizy check-backends` exposes a concise handoff summary before worker execution'), 'expected metrics docs to keep the operator-facing backend summary measurable');
+assert(metricsDocSource.includes('the README/operator docs describe the same repo-native control loop as the emitted backend adapters'), 'expected metrics docs to require consistency between docs and emitted adapters');
 assert(bootstrapManifest.documents.implementerSpawn, 'expected bootstrap manifest to include implementer spawn adapter path when the plan is not in needs-plan bootstrap mode');
 assert(bootstrapManifest.documents.laizyWatchdog, 'expected bootstrap manifest to include a local watchdog adapter path');
 assert(bootstrapManifest.documents.watchdogBackendCheck, 'expected bootstrap manifest to include a watchdog backend health-check document');

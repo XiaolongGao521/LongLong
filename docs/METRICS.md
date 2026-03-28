@@ -107,17 +107,27 @@ Questions answered:
 
 - Are configured worker backends healthy before handoff?
 - Which failures are environmental versus workflow related?
+- Does the operator-facing validation story match the emitted handoff/runtime guidance?
 
 Suggested measures:
 
 - backend preflight pass rate by worker role
 - most common failed probe type: installation, invocation, liveness
 - average time spent blocked on backend setup
+- percent of healthy runs where `check-backends` and emitted adapters both recommend proceeding to the same bounded handoff
 
 Primary sources:
 
 - backend-check artifacts
 - supervisor bundles that gate on backend health
+- operator-facing docs and emitted adapter guidance when confirming the same preflight outcome is described in both places
+
+Stage 5 backend/operator ergonomics should remain inspectable from repo artifacts and docs alone. In practice, that means an operator should be able to confirm all of the following without reconstructing chat history:
+
+- `laizy check-backends` exposes a concise handoff summary before worker execution
+- the README/operator docs describe the same repo-native control loop as the emitted backend adapters
+- backend failures stay attributable to concrete probe results instead of vague runtime errors
+- a healthy backend result still points the operator at the same bounded milestone handoff rather than a broader workflow jump
 
 ## Milestone scorecard for a run
 

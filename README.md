@@ -130,6 +130,13 @@ laizy check-backends \
 
 That keeps backend issues visible before a worker is asked to act.
 
+The intended Stage 5 operator story is deliberately simple and compatibility-safe:
+
+1. run `laizy check-backends` when you want a concise preflight verdict before handoff
+2. keep `start-run` / `supervisor-tick` as the durable repo-native control loop
+3. hand the emitted contract to the selected runtime only after the backend summary says handoff is ready
+4. treat backend failures as probe-backed setup work, not as a reason to rename commands or widen milestone scope
+
 ## Install
 
 ```bash
