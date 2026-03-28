@@ -410,6 +410,10 @@ assert(readmeSource.includes('The intended Stage 5 operator story is deliberatel
 assert(readmeSource.includes('keep `start-run` / `supervisor-tick` as the durable repo-native control loop'), 'expected README to keep backend validation aligned with the repo-native control loop');
 assert(readmeSource.includes('hand the emitted contract to the selected runtime only after the backend summary says handoff is ready'), 'expected README to keep backend handoff gated on the emitted preflight summary');
 assert(readmeSource.includes('treat backend failures as probe-backed setup work, not as a reason to rename commands or widen milestone scope'), 'expected README to keep Stage 5 backend ergonomics compatibility-safe and single-milestone scoped');
+assert(readmeSource.includes('tools.exec.pathPrepend'), 'expected README fresh-install guidance to mention OpenClaw exec pathPrepend setup');
+assert(readmeSource.includes('openclaw approvals allowlist add --agent main'), 'expected README fresh-install guidance to include explicit OpenClaw allowlist examples');
+assert(readmeSource.includes('do **not** put `node`, `bash`, `sh`, `openclaw`, `laizy`, `codex`, or `claude` in `tools.exec.safeBins`'), 'expected README fresh-install guidance to keep runtime binaries out of safeBins');
+assert(readmeSource.includes('Fresh install smoke check'), 'expected README to include a fresh-install smoke-check flow');
 const architectureDocSource = readFileSync('docs/ARCHITECTURE.md', 'utf8');
 assert(architectureDocSource.includes('resume-after-rebuild'), 'expected architecture docs to describe restart-safe resume-after-rebuild decisions');
 assert(architectureDocSource.includes('recover-before-continuing'), 'expected architecture docs to describe bounded recover-before-continuing decisions');

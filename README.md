@@ -149,6 +149,95 @@ Or run it from the repo after compiling:
 node dist/src/index.js --help
 ```
 
+### Fresh install checklist
+
+A clean Laizy install has two parts:
+
+1. install the CLIs you plan to use
+2. make sure your operator/runtime environment can actually find and approve those binaries
+
+Typical setup:
+
+```bash
+npm install -g laizy openclaw @openai/codex
+# install Claude Code separately if you plan to use it so `claude` resolves on PATH
+```
+
+If you are running from a repo checkout instead of the published binary, prefer:
+
+```bash
+node dist/src/index.js --help
+```
+
+and treat `/usr/bin/node` as the important executable to approve/allowlist, rather than a global `laizy` shim.
+
+Resolve the binaries you expect Laizy/OpenClaw to use:
+
+```bash
+command -v laizy || true
+command -v openclaw || true
+command -v codex || true
+command -v claude || true
+command -v node
+command -v git
+command -v bash || command -v sh
+```
+
+If OpenClaw exec runs with a minimal PATH on your gateway/node host, add the directory that contains those CLIs to `tools.exec.pathPrepend`.
+Typical examples are `~/.nvm/versions/node/<version>/bin`, `/opt/homebrew/bin`, or `/usr/local/bin`.
+
+### OpenClaw allowlist baseline for Laizy
+
+If you drive Laizy through OpenClaw with `tools.exec.security=allowlist`, allowlist the **resolved executable paths** you actually need.
+
+For a typical Laizy loop, that usually means:
+
+- `laizy` **or** `/usr/bin/node` (depending on whether you run the published binary or `node dist/src/index.js`)
+- `openclaw`
+- `codex` if you use the Codex CLI backend
+- `claude` if you use the Claude Code backend
+- `/usr/bin/node` for verification commands such as `/usr/bin/node scripts/build-check.mjs`
+- `/usr/bin/git` for commit/push steps
+- `/usr/bin/env` plus your shell (`/bin/bash`, `/usr/bin/bash`, or `/bin/sh`) if you want `laizy check-backends` to run its shell-based installation probes through OpenClaw exec
+
+Example allowlist commands:
+
+```bash
+openclaw approvals allowlist add --agent main "~/.nvm/versions/node/*/bin/laizy"
+openclaw approvals allowlist add --agent main "~/.nvm/versions/node/*/bin/openclaw"
+openclaw approvals allowlist add --agent main "~/.nvm/versions/node/*/bin/codex"
+openclaw approvals allowlist add --agent main "/usr/bin/node"
+openclaw approvals allowlist add --agent main "/usr/bin/git"
+openclaw approvals allowlist add --agent main "/usr/bin/env"
+openclaw approvals allowlist add --agent main "/bin/bash"
+# if Claude Code lives elsewhere, resolve it first and allowlist the exact path
+CLAUDE_BIN="$(command -v claude)"
+openclaw approvals allowlist add --agent main "$CLAUDE_BIN"
+```
+
+Important: do **not** put `node`, `bash`, `sh`, `openclaw`, `laizy`, `codex`, or `claude` in `tools.exec.safeBins`.
+`safeBins` is only for narrow stdin-only filters such as `jq`, `head`, `tail`, and `wc`.
+Runtime binaries belong in the explicit allowlist (`openclaw approvals allowlist ...` / `~/.openclaw/exec-approvals.json`).
+
+### Fresh install smoke check
+
+Once the binaries are installed and approved, do a quick end-to-end smoke check:
+
+```bash
+laizy start-run \
+  --goal "Smoke-test Laizy install" \
+  --plan examples/demo-implementation-plan.md \
+  --out state/runs/install-smoke.json
+
+laizy check-backends \
+  --snapshot state/runs/install-smoke.json \
+  --out-dir state/runs/install-smoke.backend-checks
+
+/usr/bin/node scripts/build-check.mjs
+```
+
+If you are running from the repo checkout rather than a published install, replace `laizy` with `node dist/src/index.js` in the examples above.
+
 ## CLI surface
 
 The published package exposes one binary:
