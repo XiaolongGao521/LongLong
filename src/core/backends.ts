@@ -62,7 +62,7 @@ const RUNTIME_CAPABILITIES = {
 
 function resolveWorker(snapshot: RunSnapshot, workerRole: WorkerRole): BackendWorker {
   if (!VALID_BACKEND_WORKERS.has(workerRole)) {
-    throw new Error(`Unsupported worker role for backend adapter: ${workerRole}`);
+    throw new Error(`Unsupported worker role for the backend adapter layer: ${workerRole}`);
   }
 
   return {
@@ -106,7 +106,7 @@ function resolvePromptDocument(
     return createPlannerRequest(snapshot, {
       requestedMode,
       triggerReason: requestedMode === 'replan'
-        ? milestone?.lastNote ?? 'The current run state requires bounded plan repair before implementation can continue.'
+        ? milestone?.lastNote ?? 'The current repo-native control-loop state requires bounded plan repair before implementation can continue.'
         : snapshot.planState.reason,
     }) as unknown as WorkerPromptDocument;
   }
@@ -135,16 +135,16 @@ function resolvePromptDocument(
     worker: snapshot.workers.watchdog,
     instructions: [
       'Inspect the active run snapshot and event log.',
-      'Use supervisor-tick as the source of truth for the next bounded action.',
-      'Stay quiet when progress is healthy and there is no newly landed milestone.',
+      'Use supervisor-tick as the source of truth for the next bounded action in the repo-native control loop.',
+      'Stay quiet when progress is healthy and there is no newly landed verification-gated milestone.',
     ],
   };
 }
 
 function stringifyPromptDocument(document: WorkerPromptDocument | null, worker: BackendWorker, runtimeProfile: SupervisorRuntimeProfile) {
   const lines = [
-    `You are the ${worker.label} worker for a Laizy run.`,
-    'Follow the machine-readable contract below exactly and do not widen scope.',
+    `You are the ${worker.label} worker for a Laizy repo-native control loop.`,
+    'Follow the machine-readable contract below exactly, treat it as the active supervisor bundle input, and do not widen scope.',
     `Requested runtime profile: model=${runtimeProfile.model}, thinking=${runtimeProfile.thinking}, reasoningMode=${runtimeProfile.reasoningMode}, scope=${runtimeProfile.scope}.`,
   ];
 

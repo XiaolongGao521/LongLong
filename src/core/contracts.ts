@@ -80,7 +80,7 @@ export function createPlannerIntent(
       milestoneCount: milestone ? 1 : 0,
     },
     constraints: [
-      'Execute only the selected milestone.',
+      'Execute only the selected verification-gated milestone.',
       'Do not widen scope beyond the selected milestone contract.',
       'Verify the milestone before declaring it complete.',
     ],
@@ -110,9 +110,9 @@ export function createImplementerContract(
           `Implement milestone ${milestone.id}: ${milestone.title}`,
           'Stay within the milestone details listed in this contract.',
           'Update run state through milestone transitions as work progresses.',
-          'Run verification before marking the milestone completed.',
+          'Run verification before marking the verification-gated milestone completed.',
         ]
-      : ['No actionable milestone remains.'],
+      : ['No actionable verification-gated milestone remains.'],
   };
 }
 

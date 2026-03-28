@@ -117,7 +117,7 @@ export function createSupervisorDecision(
     actions.push({
       id: 'planner-bootstrap',
       kind: 'planner.request',
-      title: 'Request bounded planning before implementation starts',
+      title: 'Request bounded planning before the repo-native control loop starts',
       worker: snapshot.workers.planner,
       requiresExternalExecution: true,
       documentPath: null,
@@ -134,44 +134,44 @@ export function createSupervisorDecision(
       {
         id: 'disable-watchdog-cron',
         kind: 'openclaw.cron',
-        title: 'Disable the OpenClaw watchdog cron for the completed run',
+        title: 'Disable the OpenClaw watchdog cron for the completed repo-native control loop',
         worker: snapshot.workers.watchdog,
         requiresExternalExecution: true,
         documentPath: null,
         documentKind: 'openclaw.cron',
-        summary: 'The run is complete; disable the OpenClaw watchdog cadence and stop supervisory nudges.',
+        summary: 'The repo-native control loop is complete; disable the OpenClaw watchdog cadence and stop supervisor nudges.',
         runtimeProfile: null,
       },
       {
         id: 'disable-laizy-watchdog',
         kind: 'laizy.watchdog',
-        title: 'Disable the local laizy watchdog loop for the completed run',
+        title: 'Disable the local laizy watchdog loop for the completed repo-native control loop',
         worker: snapshot.workers.watchdog,
         requiresExternalExecution: true,
         documentPath: null,
         documentKind: 'laizy.watchdog',
-        summary: 'If a local laizy watchdog loop is running, stop it as part of run closeout.',
+        summary: 'If a local laizy watchdog loop is running, stop it as part of repo-native control-loop closeout.',
         runtimeProfile: null,
       },
     );
 
-    return buildDecision('closeout', 'All milestones are completed; only run closeout remains.');
+    return buildDecision('closeout', 'All verification-gated milestones are completed; only control-loop closeout remains.');
   }
 
   if (snapshot.status === 'blocked' && activeMilestone?.status === 'blocked') {
     actions.push({
       id: 'planner-repair',
       kind: 'planner.request',
-      title: 'Request bounded replanning for the blocked milestone',
+      title: 'Request bounded replanning for the blocked verification-gated milestone',
       worker: snapshot.workers.planner,
       requiresExternalExecution: true,
       documentPath: null,
       documentKind: 'planner.request',
-      summary: activeMilestone.lastNote ?? 'The current milestone is blocked and requires plan repair.',
+      summary: activeMilestone.lastNote ?? 'The current verification-gated milestone is blocked and requires bounded plan repair.',
       runtimeProfile: null,
     });
 
-    return buildDecision('replan', activeMilestone.lastNote ?? 'The current milestone is blocked and requires plan repair.');
+    return buildDecision('replan', activeMilestone.lastNote ?? 'The current verification-gated milestone is blocked and requires bounded plan repair.');
   }
 
   if (snapshot.status === 'blocked' || (snapshot.status !== 'planned' && healthReport.recoveryRecommendation.action !== 'none')) {
@@ -194,37 +194,37 @@ export function createSupervisorDecision(
     actions.push({
       id: 'run-verification',
       kind: 'verification.command',
-      title: 'Run milestone verification',
+      title: 'Run verification for the active verification-gated milestone',
       worker: snapshot.workers.verifier,
       requiresExternalExecution: true,
       documentPath: null,
       documentKind: 'verification.command',
-      summary: `Run verification for milestone ${activeMilestone?.id ?? 'unknown'} before completion.`,
+      summary: `Run verification for milestone ${activeMilestone?.id ?? 'unknown'} before completing the verification-gated milestone.`,
       runtimeProfile: null,
     });
 
-    return buildDecision('verify', 'The active milestone is in verifying state and needs an explicit verification result.');
+    return buildDecision('verify', 'The active verification-gated milestone is in verifying state and needs an explicit verification result.');
   }
 
   actions.push({
     id: 'continue-implementer',
     kind: 'implementer.contract',
-    title: snapshot.status === 'planned' ? 'Start the next milestone' : 'Continue the active milestone',
+    title: snapshot.status === 'planned' ? 'Start the next verification-gated milestone' : 'Continue the active verification-gated milestone',
     worker: snapshot.workers.implementer,
     requiresExternalExecution: true,
     documentPath: null,
     documentKind: 'implementer.contract',
     summary: snapshot.status === 'planned'
-      ? `Start milestone ${activeMilestone?.id ?? 'unknown'} with a bounded implementer contract.`
-      : `Continue milestone ${activeMilestone?.id ?? 'unknown'} without widening scope.`,
+      ? `Start milestone ${activeMilestone?.id ?? 'unknown'} as the next bounded step in the repo-native control loop.`
+      : `Continue milestone ${activeMilestone?.id ?? 'unknown'} as a bounded step in the repo-native control loop without widening scope.`,
     runtimeProfile: null,
   });
 
   return buildDecision(
     'continue',
     snapshot.status === 'planned'
-      ? 'The run has an actionable milestone and no active implementer progress yet.'
-      : 'The active milestone remains healthy and should continue under the bounded contract.',
+      ? 'The repo-native control loop has an actionable milestone and no active implementer progress yet.'
+      : 'The active verification-gated milestone remains healthy and should continue under the bounded contract.',
   );
 }
 

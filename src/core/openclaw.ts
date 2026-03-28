@@ -22,7 +22,7 @@ const VALID_ADAPTER_WORKERS = new Set<WorkerRole>([
 
 function resolveWorker(snapshot: RunSnapshot, workerRole: WorkerRole) {
   if (!VALID_ADAPTER_WORKERS.has(workerRole)) {
-    throw new Error(`Unsupported worker role for OpenClaw adapter: ${workerRole}`);
+    throw new Error(`Unsupported worker role for the OpenClaw adapter layer: ${workerRole}`);
   }
 
   return {
@@ -108,7 +108,7 @@ export function createSessionSpawnAdapter(
     ? createPlannerRequest(snapshot, {
         requestedMode: decision === 'replan' ? 'replan' : 'plan',
         triggerReason: decision === 'replan'
-          ? 'The current run state requires bounded plan repair before implementation can continue.'
+          ? 'The current repo-native control-loop state requires bounded plan repair before implementation can continue.'
           : snapshot.planState.reason,
       })
     : null;
@@ -205,7 +205,7 @@ export function createCronAdapter(
   const backendConfiguration = resolveBackendConfiguration(snapshot)[worker.role];
   const backendCheck = options.backendCheck ?? createBackendCheckResult(snapshot, worker.role);
   const prompt = options.prompt
-    ?? `Inspect ${snapshot.workers.implementer} for milestone progress or stalls in ${path.basename(snapshot.repoPath)}.`;
+    ?? `Inspect ${snapshot.workers.implementer} for repo-native control-loop milestone progress or stalls in ${path.basename(snapshot.repoPath)}.`;
 
   return createAdapterEnvelope({
     operation: 'cron',
