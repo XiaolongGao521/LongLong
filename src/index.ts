@@ -838,7 +838,17 @@ async function main() {
 
       if (typeof options.out === 'string') {
         const outputPath = writeBackendCheckResult(options.out, document);
-        console.log(JSON.stringify({ outputPath, kind: document.kind, worker: document.worker.label, overallStatus: document.overallStatus }, null, 2));
+        console.log(JSON.stringify({
+          outputPath,
+          kind: document.kind,
+          worker: document.worker.label,
+          overallStatus: document.overallStatus,
+          handoffStatus: document.summary.handoffStatus,
+          headline: document.summary.headline,
+          nextAction: document.summary.nextAction,
+          failedProbeCount: document.summary.failedProbeCount,
+          failedProbeNames: document.summary.failedProbeNames,
+        }, null, 2));
         return;
       }
 
@@ -855,12 +865,19 @@ async function main() {
       const writtenOutputPath = writeBackendCheckResult(outputPath, document);
       return {
         role,
+        worker: document.worker.label,
         overallStatus: document.overallStatus,
+        handoffStatus: document.summary.handoffStatus,
+        headline: document.summary.headline,
+        nextAction: document.summary.nextAction,
+        failedProbeCount: document.summary.failedProbeCount,
+        failedProbeNames: document.summary.failedProbeNames,
         backend: document.backend.backend,
         outputPath: writtenOutputPath,
       };
     });
-    const overallStatus = documents.every((document) => document.overallStatus === 'healthy') ? 'healthy' : 'unhealthy';
+    const unhealthyDocuments = documents.filter((document) => document.overallStatus !== 'healthy');
+    const overallStatus = unhealthyDocuments.length === 0 ? 'healthy' : 'unhealthy';
 
     console.log(JSON.stringify({
       schemaVersion: 1,
@@ -868,6 +885,25 @@ async function main() {
       snapshotPath: rebuilt.snapshotPath,
       outputDir,
       overallStatus,
+      summary: {
+        checkedWorkerCount: documents.length,
+        healthyWorkerCount: documents.length - unhealthyDocuments.length,
+        unhealthyWorkerCount: unhealthyDocuments.length,
+        headline: unhealthyDocuments.length === 0
+          ? 'All configured worker backends passed preflight and are ready for handoff.'
+          : `${unhealthyDocuments.length} worker backend preflight check(s) blocked handoff.`,
+        nextAction: unhealthyDocuments.length === 0 ? 'proceed-to-handoff' : 'inspect-failed-probes',
+        unhealthyWorkers: unhealthyDocuments.map((document) => ({
+          role: document.role,
+          worker: document.worker,
+          backend: document.backend,
+          headline: document.headline,
+          failedProbeCount: document.failedProbeCount,
+          failedProbeNames: document.failedProbeNames,
+          nextAction: document.nextAction,
+          outputPath: document.outputPath,
+        })),
+      },
       documents,
     }, null, 2));
     return;
@@ -882,7 +918,17 @@ async function main() {
 
     if (typeof options.out === 'string') {
       const outputPath = writeBackendCheckResult(options.out, document);
-      console.log(JSON.stringify({ outputPath, kind: document.kind, worker: document.worker.label, overallStatus: document.overallStatus }, null, 2));
+      console.log(JSON.stringify({
+        outputPath,
+        kind: document.kind,
+        worker: document.worker.label,
+        overallStatus: document.overallStatus,
+        handoffStatus: document.summary.handoffStatus,
+        headline: document.summary.headline,
+        nextAction: document.summary.nextAction,
+        failedProbeCount: document.summary.failedProbeCount,
+        failedProbeNames: document.summary.failedProbeNames,
+      }, null, 2));
       return;
     }
 

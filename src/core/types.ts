@@ -19,6 +19,13 @@ export type BackendKind = 'openclaw' | 'codex-cli' | 'claude-code' | 'laizy-watc
 export type BackendProbeName = 'installation' | 'invocation' | 'liveness';
 export type BackendProbeStatus = 'not-run' | 'not-applicable' | 'passed' | 'failed';
 export type BackendOverallStatus = 'unknown' | 'healthy' | 'unhealthy';
+export type BackendCheckNextAction =
+  | 'proceed-to-handoff'
+  | 'install-or-expose-backend'
+  | 'repair-backend-invocation'
+  | 'restore-backend-liveness'
+  | 'inspect-failed-probes';
+export type BackendHandoffStatus = 'ready' | 'blocked';
 export type WorkerBackendConfig = {
   role: WorkerRole;
   backend: BackendKind;
@@ -32,6 +39,25 @@ export type BackendHealthProbe = {
   detail: string;
   command: string | null;
   checkedAt: string;
+};
+export type BackendProbeSummary = {
+  name: BackendProbeName;
+  status: BackendProbeStatus;
+  detail: string;
+  outputPreview: string | null;
+  command: string | null;
+  nextAction: BackendCheckNextAction;
+};
+export type BackendCheckSummary = {
+  handoffStatus: BackendHandoffStatus;
+  headline: string;
+  operatorMessage: string;
+  nextAction: BackendCheckNextAction;
+  failedProbeCount: number;
+  failedProbeNames: BackendProbeName[];
+  probeStatusCounts: Record<BackendProbeStatus, number>;
+  probes: BackendProbeSummary[];
+  failedProbes: BackendProbeSummary[];
 };
 export type BackendCheckResultDocument = {
   schemaVersion: number;
@@ -49,6 +75,7 @@ export type BackendCheckResultDocument = {
   backend: WorkerBackendConfig;
   overallStatus: BackendOverallStatus;
   probes: BackendHealthProbe[];
+  summary: BackendCheckSummary;
   outputPath: string | null;
 };
 export type WorkerLabel =

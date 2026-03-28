@@ -83,6 +83,21 @@ function createAdapterEnvelope({
   };
 }
 
+function createBackendPreflightSummary(backendCheck: BackendCheckResultDocument) {
+  return {
+    handoffStatus: backendCheck.summary.handoffStatus,
+    overallStatus: backendCheck.overallStatus,
+    headline: backendCheck.summary.headline,
+    operatorMessage: backendCheck.summary.operatorMessage,
+    nextAction: backendCheck.summary.nextAction,
+    failedProbeCount: backendCheck.summary.failedProbeCount,
+    failedProbeNames: backendCheck.summary.failedProbeNames,
+    probeStatusCounts: backendCheck.summary.probeStatusCounts,
+    probes: backendCheck.summary.probes,
+    outputPath: backendCheck.outputPath ?? null,
+  };
+}
+
 export function createSessionSpawnAdapter(
   snapshot: RunSnapshot,
   options: {
@@ -130,6 +145,7 @@ export function createSessionSpawnAdapter(
       promptDocument: contract ?? plannerRequest ?? recoveryPlan,
       configuredBackend: backendConfiguration,
       backendCheck,
+      backendPreflight: createBackendPreflightSummary(backendCheck),
       runtimeProfile,
       metadata: {
         stableWorkerLabel: true,
@@ -220,6 +236,7 @@ export function createCronAdapter(
       prompt,
       configuredBackend: backendConfiguration,
       backendCheck,
+      backendPreflight: createBackendPreflightSummary(backendCheck),
       metadata: {
         stableWorkerLabel: true,
         cadence: 'watchdog',

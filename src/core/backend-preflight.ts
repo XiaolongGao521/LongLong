@@ -3,10 +3,12 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 import type {
+  BackendCheckNextAction,
   BackendCheckResultDocument,
   BackendConfiguration,
   BackendHealthProbe,
   BackendKind,
+  BackendProbeStatus,
   RunSnapshot,
   WorkerBackendConfig,
   WorkerRole,
@@ -212,6 +214,52 @@ function readablePathProbe(name: BackendHealthProbe['name'], detail: string, tar
   }
 }
 
+const OUTPUT_MARKER = ' Output: ';
+
+function truncateSummaryText(value: string, maxLength = 160): string {
+  return value.length > maxLength
+    ? `${value.slice(0, maxLength - 1).trimEnd()}…`
+    : value;
+}
+
+function summarizeProbeOutput(output: string | null): string | null {
+  if (!output) {
+    return null;
+  }
+
+  const lines = output
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const primaryLine = lines.find((line) => /[\p{L}\p{N}]/u.test(line)) ?? lines[0];
+  const extraLineCount = Math.max(0, lines.length - 1);
+  const preview = truncateSummaryText(primaryLine.replace(/\s+/gu, ' '));
+  return extraLineCount > 0 ? `${preview} (+${extraLineCount} more lines)` : preview;
+}
+
+function summarizeProbeDetail(detail: string): { detail: string; outputPreview: string | null } {
+  const outputIndex = detail.indexOf(OUTPUT_MARKER);
+
+  if (outputIndex === -1) {
+    return {
+      detail: truncateSummaryText(detail.replace(/\s+/gu, ' ').trim()),
+      outputPreview: null,
+    };
+  }
+
+  const detailSummary = detail.slice(0, outputIndex).replace(/\s+/gu, ' ').trim();
+  const output = detail.slice(outputIndex + OUTPUT_MARKER.length).trim();
+  return {
+    detail: truncateSummaryText(detailSummary),
+    outputPreview: summarizeProbeOutput(output),
+  };
+}
+
 function createOpenClawProbes(snapshot: RunSnapshot): BackendHealthProbe[] {
   return [
     execProbe('installation', 'Verified the openclaw CLI is installed.', '/usr/bin/env', ['bash', '-lc', 'command -v openclaw'], { timeoutMs: 1000 }),
@@ -271,6 +319,100 @@ function createBackendProbes(snapshot: RunSnapshot, backend: BackendKind): Backe
   return createLaizyWatchdogProbes(snapshot);
 }
 
+function createProbeStatusCounts(probes: BackendHealthProbe[]): Record<BackendProbeStatus, number> {
+  return probes.reduce<Record<BackendProbeStatus, number>>((counts, probe) => {
+    counts[probe.status] += 1;
+    return counts;
+  }, {
+    'not-run': 0,
+    'not-applicable': 0,
+    passed: 0,
+    failed: 0,
+  });
+}
+
+function nextActionForProbe(probe: BackendHealthProbe): BackendCheckNextAction {
+  if (probe.name === 'installation') {
+    return 'install-or-expose-backend';
+  }
+
+  if (probe.name === 'invocation') {
+    return 'repair-backend-invocation';
+  }
+
+  if (probe.name === 'liveness') {
+    return 'restore-backend-liveness';
+  }
+
+  return 'inspect-failed-probes';
+}
+
+function nextActionForFailedProbes(failedProbes: BackendHealthProbe[]): BackendCheckNextAction {
+  if (failedProbes.length === 0) {
+    return 'proceed-to-handoff';
+  }
+
+  if (failedProbes.some((probe) => probe.name === 'installation')) {
+    return 'install-or-expose-backend';
+  }
+
+  if (failedProbes.some((probe) => probe.name === 'invocation')) {
+    return 'repair-backend-invocation';
+  }
+
+  if (failedProbes.some((probe) => probe.name === 'liveness')) {
+    return 'restore-backend-liveness';
+  }
+
+  return 'inspect-failed-probes';
+}
+
+function createBackendCheckSummary(
+  snapshot: RunSnapshot,
+  role: WorkerRole,
+  configuration: WorkerBackendConfig,
+  probes: BackendHealthProbe[],
+  overallStatus: BackendCheckResultDocument['overallStatus'],
+): BackendCheckResultDocument['summary'] {
+  const workerLabel = snapshot.workers[role];
+  const failedProbes = probes.filter((probe) => probe.status === 'failed');
+  const failedProbeNames = failedProbes.map((probe) => probe.name);
+  const nextAction = nextActionForFailedProbes(failedProbes);
+  const handoffStatus = overallStatus === 'healthy' ? 'ready' : 'blocked';
+  const failedProbeList = failedProbeNames.length > 0 ? failedProbeNames.join(', ') : 'none';
+  const probeStatusCounts = createProbeStatusCounts(probes);
+  const probeSummaries = probes.map((probe) => {
+    const summarizedDetail = summarizeProbeDetail(probe.detail);
+    return {
+      name: probe.name,
+      status: probe.status,
+      detail: summarizedDetail.detail,
+      outputPreview: summarizedDetail.outputPreview,
+      command: probe.command,
+      nextAction: probe.status === 'failed' ? nextActionForProbe(probe) : 'proceed-to-handoff',
+    };
+  });
+
+  const operatorMessage = failedProbes.length === 0
+    ? `Backend preflight passed for ${role} worker ${workerLabel} using ${configuration.backend}. Safe to hand off bounded work.`
+    : `Backend preflight blocked ${role} worker ${workerLabel} using ${configuration.backend}. Failed probes: ${failedProbeList}. Fix the reported backend issue before worker handoff.`;
+  const headline = failedProbes.length === 0
+    ? `${workerLabel} (${role}) is ready on ${configuration.backend}; ${probeStatusCounts.passed}/${probes.length} probes passed.`
+    : `${workerLabel} (${role}) is blocked on ${configuration.backend}; failed probes: ${failedProbeList}.`;
+
+  return {
+    handoffStatus,
+    headline,
+    operatorMessage,
+    nextAction,
+    failedProbeCount: failedProbes.length,
+    failedProbeNames,
+    probeStatusCounts,
+    probes: probeSummaries,
+    failedProbes: probeSummaries.filter((probe) => probe.status === 'failed'),
+  };
+}
+
 export function createBackendCheckResult(
   snapshot: RunSnapshot,
   role: WorkerRole,
@@ -315,6 +457,7 @@ export function createBackendCheckResult(
     backend: configuration,
     overallStatus,
     probes,
+    summary: createBackendCheckSummary(snapshot, role, configuration, probes, overallStatus),
     outputPath: options.outputPath ?? null,
   } satisfies BackendCheckResultDocument;
 
@@ -323,14 +466,15 @@ export function createBackendCheckResult(
 }
 
 export function summarizeBackendCheckFailures(document: BackendCheckResultDocument): string {
-  const failedProbes = document.probes.filter((probe) => probe.status === 'failed');
-
-  if (failedProbes.length === 0) {
-    return `${document.worker.role} backend ${document.backend.backend} is healthy.`;
+  if (document.summary.failedProbes.length === 0) {
+    return document.summary.headline;
   }
 
-  return failedProbes
-    .map((probe) => `${probe.name}: ${probe.detail}`)
+  return document.summary.failedProbes
+    .map((probe) => {
+      const preview = probe.outputPreview ? ` outputPreview=${JSON.stringify(probe.outputPreview)}` : '';
+      return `${probe.name}: ${probe.detail}${preview} (nextAction=${probe.nextAction})`;
+    })
     .join(' | ');
 }
 
@@ -341,7 +485,7 @@ export function assertHealthyBackendCheck(document: BackendCheckResultDocument, 
 
   const context = options.context ? `${options.context}: ` : '';
   throw new Error(
-    `${context}configured ${document.worker.role} backend ${document.backend.backend} failed preflight (${document.outputPath ?? 'no output path'}). ${summarizeBackendCheckFailures(document)}`,
+    `${context}${document.summary.operatorMessage} Primary next action: ${document.summary.nextAction}. Artifact: ${document.outputPath ?? 'no output path'}. ${summarizeBackendCheckFailures(document)}`,
   );
 }
 
